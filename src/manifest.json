@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Wplace_Locator",
+  "version": "1.0",
+  "description": "Floating Wplace locator: share current pixel coords and jump to shared coords",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "storage",
+    "clipboardWrite",
+    "notifications",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://backend.wplace.live/*",
+    "https://wplace.live/*"
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "action": {
+    "default_title": "Wplace_Locator"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://wplace.live/*"],
+      "js": ["content_boot.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content_ui.js"],
+      "css": ["content_ui.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icons/icon48.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["wplace_theme_inject.js", "icons/*"],
+      "matches": ["https://wplace.live/*"]
+    }
+  ]
+}

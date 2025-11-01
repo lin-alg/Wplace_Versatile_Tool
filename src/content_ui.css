@@ -1,0 +1,110 @@
+/* content_ui.css */
+#wplace_locator {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 320px;
+  max-width: 90%;
+  background: rgba(18, 18, 20, 0.95);
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  z-index: 2147483647;
+  font-family: Arial, sans-serif;
+  padding: 12px;
+}
+#wplace_locator.minimized {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#wplace_header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:8px;
+}
+#wplace_title { font-weight:700; font-size:14px; }
+#wplace_controls button, #wplace_controls select {
+  margin-left:6px;
+}
+#wplace_body { font-size:13px; }
+#wplace_body input[type="text"]{
+  width:100%;
+  padding:6px 8px;
+  margin:6px 0;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.03);
+  color:#fff;
+}
+.wplace_btn {
+  display:inline-block;
+  padding:6px 10px;
+  margin-right:6px;
+  border-radius:6px;
+  background:#1e90ff;
+  color:#fff;
+  border:none;
+  cursor:pointer;
+  font-size:13px;
+}
+.wplace_btn.secondary { background:#444; }
+#wplace_toast {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: rgba(0,0,0,0.75);
+  padding:6px 8px;
+  border-radius:6px;
+  font-size:12px;
+  display:none;
+}
+.drag-handle { cursor: move; }
+.lang-toggle { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.08); padding:4px 6px; border-radius:6px; }
+
+/* 下拉主控件文本为灰色 */
+#wplace_lang_sel,
+#wplace_map_style {
+  color: #9aa0a6;          /* 主文本颜色：灰色 */
+  background-color: transparent;
+  border-color: rgba(255,255,255,0.08);
+  -webkit-appearance: none; /* 可选：统一外观 */
+  appearance: none;
+}
+
+/* 下拉项（option）在大多数浏览器中应用颜色（注意：部分浏览器对 option 限制较多）*/
+#wplace_lang_sel option,
+#wplace_map_style option {
+  color: #6e7376;          /* option 列表内文字颜色（较深的灰） */
+  background: #111;        /* 下拉列表背景，按你的主题调整 */
+}
+
+/* 如果你使用自定义箭头或覆盖原生外观，确保 placeholder/选中项也为灰 */
+#wplace_lang_sel:invalid,
+#wplace_map_style:invalid {
+  color: #9aa0a6;
+}
+
+/* 给 select 添加焦点/悬停易辨识样式（可选） */
+#wplace_lang_sel:focus,
+#wplace_map_style:focus,
+#wplace_lang_sel:hover,
+#wplace_map_style:hover {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(154,160,166,0.06);
+}
+
+/* 强制覆盖深色主题下被其他规则覆盖的情况（如必要时解除注释使用） */
+/*
+#wplace_lang_sel,
+#wplace_map_style,
+#wplace_lang_sel option,
+#wplace_map_style option {
+  color: #9aa0a6 !important;
+}
+*/
