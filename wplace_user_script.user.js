@@ -1,19 +1,18 @@
 // ==UserScript==
-// @name        Wplace Coordinates Helper (converted)
-// @namespace   http://tampermonkey.net/
-// @version     0.1
-// @description 合并自 src.zip，用于在 Wplace 页面 显示/查找坐标
-// @author      Converted by assistant
-// @match       https://wplace.live/*
-// @match       https://*.wplace.live/*
-// @match       https://wplace.life/*
-// @match       https://*.wplace.life/*
-// @grant       GM_addStyle
-// @grant       GM_getValue
-// @grant       GM_setValue
-// @grant       GM_xmlhttpRequest
-// @grant       unsafeWindow
-// @run-at      document-idle
+// @name         Wplace Locator
+// @namespace    https://github.com/lin-alg/Wplace_Locator
+// @version      1.2.0
+// @description  只需粘贴基准坐标，自动填充并跳转到目标位置（支持 Blue Marble / Skirk Marble）
+// @author       lin-alg
+// @match        https://wplace.live/*
+// @match        https://example-blue-marble-domain/*
+// @match        https://example-skirk-domain/*
+// @grant        none
+// @run-at       document-idle
+// @icon         https://raw.githubusercontent.com/lin-alg/Wplace_Locator/main/images/icon.png
+// @license      MIT
+// @updateURL    https://raw.githubusercontent.com/lin-alg/Wplace_Locator/main/wplace_user_script.user.js
+// @downloadURL  https://raw.githubusercontent.com/lin-alg/Wplace_Locator/main/wplace_user_script.user.js
 // ==/UserScript==
 
 /* CSS from content_ui.css */

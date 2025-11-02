@@ -49,7 +49,8 @@ Wplace_Locator 是一个轻量的悬浮扩展。它可以：
 ### 快速开始
 
 #### 安装（开发 / 调试）
-可以直接点击该链接安装篡改猴脚本，或者安装下面的解压版插件：
+可以直接点击该链接:https://raw.githubusercontent.com/lin-alg/Wplace_Locator/main/wplace_user_script.user.js
+安装篡改猴脚本，或者安装下面的解压版插件：
 1. 打开 Chrome或Edge 扩展管理页（chrome://extensions/ 或 edge://extensions/），打开“开发者模式”。  
 ![alt text](./images/image-1.png)
 2. 点击“加载已解压的扩展”，选择本项目的 src 文件夹。 
