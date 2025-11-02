@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wplace_Locator",
-  "version": "1.0",
+  "version": "2.0",
   "description": "Floating Wplace locator: share current pixel coords and jump to shared coords",
   "permissions": [
     "scripting",
@@ -28,7 +28,7 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://wplace.live/*"],
       "js": ["content_ui.js"],
       "css": ["content_ui.css"],
       "run_at": "document_idle"

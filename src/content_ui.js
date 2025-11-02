@@ -14,10 +14,34 @@
       no_share: "No recent share found",
       copy_fail: "Failed to copy to clipboard",
       minimized_tip: "Click to expand",
-      choose_map: "Map style"
+      choose_map: "Map style",
+      fav_add: "☆",
+      fav_added: "Saved to favorites",
+      fav_no_input: "No valid coords to save",
+      fav_manager: "Favorites",
+      fav_empty: "No favorites yet",
+      fav_rename: "Rename",
+      fav_delete: "Delete",
+      fav_copy: "Copy",
+      fav_jump: "Jump",
+      fav_name_placeholder: "Name (optional)",
+      fav_saved_label: "Saved",
+      fav_load: "Load",
+      ruler: "Ruler",
+      ruler_title: "Ruler",
+      ruler_pick_start: "Pick Start",
+      ruler_pick_end: "Pick End",
+      ruler_start_label: "Start (TL):",
+      ruler_end_label: "End (BR):",
+      ruler_offset_label: "Offsets (X, Y):",
+      ruler_area_label: "Area (sq units):",
+      ruler_clear: "Clear",
+      ruler_pick_toast: "Picked",
+      ruler_wait_pick: "Click on the map to pick",
+      ruler_no_coords: "No coords available to pick"
     },
     zh: {
-      title: "Wplace 定位",
+      title: "Wplace 定位器",
       share: "分享",
       jump: "跳转",
       placeholder: "输入 TlX, TlY, PxX, PxY，例如 180,137,42,699",
@@ -25,7 +49,31 @@
       no_share: "未发现最近的分享",
       copy_fail: "复制到剪贴板失败",
       minimized_tip: "最小化",
-      choose_map: "地图样式"
+      choose_map: "地图样式",
+      fav_add: "☆",
+      fav_added: "已加入收藏",
+      fav_no_input: "没有可保存的有效坐标",
+      fav_manager: "收藏夹",
+      fav_empty: "尚无收藏",
+      fav_rename: "重命名",
+      fav_delete: "删除",
+      fav_copy: "复制",
+      fav_jump: "跳转",
+      fav_name_placeholder: "名称（可选）",
+      fav_saved_label: "已保存",
+      fav_load: "加载",
+       ruler: "标尺",
+      ruler_title: "标尺",
+      ruler_pick_start: "拾取 起点",
+      ruler_pick_end: "拾取 终点",
+      ruler_start_label: "起点（左上）:",
+      ruler_end_label: "终点（右下）:",
+      ruler_offset_label: "横纵偏移 (X, Y):",
+      ruler_area_label: "面积 (平方单位):",
+      ruler_clear: "清除",
+      ruler_pick_toast: "已拾取",
+      ruler_wait_pick: "请在地图上点击以拾取",
+      ruler_no_coords: "没有可用的坐标"
     }
   };
 
@@ -49,15 +97,22 @@
       </div>
     </div>
     <div id="wplace_body">
-      <div style="margin-bottom:8px;">
+      <div style="margin-bottom:8px; display:flex; gap:8px; align-items:center;">
         <button id="wplace_share" class="wplace_btn">${t("share")}</button>
         <button id="wplace_jump_btn" class="wplace_btn secondary">${t("jump")}</button>
+        <button id="wplace_fav_btn" title="${t("fav_add")}" class="wplace_btn star">${t("fav_add")}</button>
+        <button id="wplace_fav_manager_btn" class="wplace_btn">${t("fav_manager")}</button>
+        <button id="wplace_ruler_btn" class="wplace_btn">${t("ruler")}</button>
       </div>
       <input id="wplace_input" type="text" placeholder="${t("placeholder")}" />
     </div>
     <div id="wplace_toast"></div>
   `;
   document.body.appendChild(root);
+  try {
+    root.style.minWidth = '420px';
+    root.style.maxWidth = '92vw';
+  } catch (e) {}
 
   const styleId = "wplace_locator_css";
   if (!document.getElementById(styleId)) {
@@ -74,23 +129,100 @@
   const toast = root.querySelector("#wplace_toast");
   const minBtn = root.querySelector("#wplace_min_btn");
   const langSel = root.querySelector("#wplace_lang_sel");
+  const favBtn = root.querySelector("#wplace_fav_btn");
+  const favManagerBtn = root.querySelector("#wplace_fav_manager_btn");
+  const rulerBtn = root.querySelector("#wplace_ruler_btn");
 
   langSel.value = lang;
-  langSel.addEventListener("change", () => {
-    lang = langSel.value;
-    localStorage.setItem("wplace_lang", lang);
-    root.querySelector("#wplace_title").textContent = t("title");
-    shareBtn.textContent = t("share");
-    jumpBtn.textContent = t("jump");
-    inputEl.placeholder = t("placeholder");
-    minBtn.title = t("minimized_tip");
-  });
+// 更全面且稳健的语言切换处理器（替换原有的 change handler）
+langSel.addEventListener("change", () => {
+  lang = langSel.value;
+  try { localStorage.setItem("wplace_lang", lang); } catch (e) {}
+
+  // 更新主面板静态文本
+  try {
+    const titleEl = root.querySelector("#wplace_title");
+    if (titleEl) titleEl.textContent = t("title");
+
+    const shareBtnEl = root.querySelector("#wplace_share");
+    if (shareBtnEl) shareBtnEl.textContent = t("share");
+
+    const jumpBtnEl = root.querySelector("#wplace_jump_btn");
+    if (jumpBtnEl) jumpBtnEl.textContent = t("jump");
+
+    const inputElLocal = root.querySelector("#wplace_input");
+    if (inputElLocal) inputElLocal.placeholder = t("placeholder");
+
+    const minBtnLocal = root.querySelector("#wplace_min_btn");
+    if (minBtnLocal) minBtnLocal.title = t("minimized_tip");
+
+    const favBtnLocal = root.querySelector("#wplace_fav_btn");
+    if (favBtnLocal) favBtnLocal.title = t("fav_add");
+
+    const favMgrBtnLocal = root.querySelector("#wplace_fav_manager_btn");
+    if (favMgrBtnLocal) favMgrBtnLocal.textContent = t("fav_manager");
+
+    const rulerBtnLocal = root.querySelector("#wplace_ruler_btn");
+    if (rulerBtnLocal) rulerBtnLocal.textContent = t("ruler");
+  } catch (e) {}
+
+  // 尝试调用已存在的面板 i18n 更新函数；若不存在则做回退 DOM 更新
+  try {
+    try { updateFavManagerI18n(); } catch (e) {
+      try {
+        const m = document.getElementById('wplace_fav_manager');
+        if (m) {
+          const nm = m.querySelector('#wplace_fav_newname'); if (nm) nm.placeholder = t('fav_name_placeholder');
+          const addBtn = m.querySelector('#wplace_fav_add_from_input'); if (addBtn) addBtn.textContent = t('fav_add');
+          const btnCopy = m.querySelector('#wplace_fav_action_copy'); if (btnCopy) btnCopy.textContent = t('fav_copy');
+          const btnJump = m.querySelector('#wplace_fav_action_jump'); if (btnJump) btnJump.textContent = t('fav_jump');
+          const btnRename = m.querySelector('#wplace_fav_action_rename'); if (btnRename) btnRename.textContent = t('fav_rename');
+          const btnDelete = m.querySelector('#wplace_fav_action_delete'); if (btnDelete) btnDelete.textContent = t('fav_delete');
+        }
+      } catch (e2) {}
+    }
+  } catch (e) {}
+
+  try {
+    try { updateRulerI18n(); } catch (e) {
+      try {
+        const r = document.getElementById('wplace_ruler_panel');
+        if (r) {
+          const hdr = r.querySelector('.drag-handle'); if (hdr) hdr.textContent = t('ruler_title');
+          const ps = r.querySelector('#wplace_ruler_pick_start'); if (ps) ps.textContent = t('ruler_pick_start');
+          const pe = r.querySelector('#wplace_ruler_pick_end'); if (pe) pe.textContent = t('ruler_pick_end');
+          const cl = r.querySelector('#wplace_ruler_clear'); if (cl) cl.textContent = t('ruler_clear');
+          const labels = Array.from(r.querySelectorAll('label'));
+          if (labels[0]) labels[0].textContent = t('ruler_start_label');
+          if (labels[1]) labels[1].textContent = t('ruler_end_label');
+          const offEl = r.querySelector('#wplace_ruler_offsets'); if (offEl) offEl.textContent = `${t('ruler_offset_label')} —`;
+          const areaEl = r.querySelector('#wplace_ruler_area'); if (areaEl) areaEl.textContent = `${t('ruler_area_label')} —`;
+        }
+      } catch (e2) {}
+    }
+  } catch (e) {}
+
+  // 如果收藏管理器有 refresh API，调用一次以确保内部也更新
+  try {
+    if (window.__wplace_fav_manager && typeof window.__wplace_fav_manager.refresh === 'function') {
+      window.__wplace_fav_manager.refresh();
+    }
+  } catch (e) {}
+
+  // 如果 ruler 模块暴露了 i18n 更新方法，调用它
+  try {
+    if (typeof window.__wplace_update_ruler_i18n === 'function') {
+      window.__wplace_update_ruler_i18n();
+    }
+  } catch (e) {}
+});
+
 
   function showToast(msg, timeout=2500) {
     toast.style.display = "block";
     toast.textContent = msg;
     clearTimeout(toast._timer);
-    toast._timer = setTimeout(()=> { toast.style.display = "none"; }, timeout);
+    toast._timer = setTimeout(() => { toast.style.display = "none"; }, timeout);
   }
 
   // --------- Parsing & math ----------
@@ -101,6 +233,58 @@
     const nums = parts.map(s => Number(s));
     if (nums.some(n => Number.isNaN(n))) return null;
     return nums;
+  }
+
+  // 更新收藏管理器中的所有可本地化文本（语言切换时调用）
+  function updateFavManagerI18n() {
+    const m = document.getElementById('wplace_fav_manager');
+    if (!m) return; // 未创建则无需处理
+
+    // header
+    const hdr = m.querySelector(' .drag-handle');
+    if (hdr) hdr.textContent = t('fav_manager');
+
+    // footer placeholder & add button
+    const nm = m.querySelector('#wplace_fav_newname');
+    if (nm) nm.placeholder = t('fav_name_placeholder');
+    const addBtn = m.querySelector('#wplace_fav_add_from_input');
+    if (addBtn) addBtn.textContent = t('fav_add');
+
+    // actions
+    const btnLoad = m.querySelector('#wplace_fav_action_load');
+    const btnCopy = m.querySelector('#wplace_fav_action_copy');
+    const btnJump = m.querySelector('#wplace_fav_action_jump');
+    const btnRename = m.querySelector('#wplace_fav_action_rename');
+    const btnDelete = m.querySelector('#wplace_fav_action_delete');
+
+    if (btnLoad) btnLoad.textContent = t('fav_load');
+    if (btnCopy) btnCopy.textContent = t('fav_copy');
+    if (btnJump) btnJump.textContent = t('fav_jump');
+    if (btnRename) btnRename.textContent = t('fav_rename');
+    if (btnDelete) btnDelete.textContent = t('fav_delete');
+
+    // close button （如果你想本地化 X 也可）
+    const closeBtn = m.querySelector('#wplace_fav_close');
+    if (closeBtn) {
+      try { closeBtn.setAttribute('aria-label', t('fav_manager')); } catch(e) {}
+    }
+
+    // 如果当前列表为空，更新提示文本
+    const body = m.querySelector('#wplace_fav_body');
+    if (body && body.children.length === 1) {
+      const only = body.children[0];
+      if (only && only.textContent && only.textContent.trim().length > 0) {
+        if (only.textContent.trim() === 'No favorites yet' || only.textContent.trim() === '尚无收藏' || only.getAttribute('data-fav-empty')) {
+          only.textContent = t('fav_empty');
+        }
+      }
+    }
+
+    try {
+      if (window.__wplace_fav_manager && typeof window.__wplace_fav_manager.refresh === 'function') {
+        window.__wplace_fav_manager.refresh();
+      }
+    } catch (e) {}
   }
 
   function computeLatLngFromFour(TlX, TlY, PxX, PxY) {
@@ -150,6 +334,61 @@
     }
   });
 
+  // --------- Favorites storage helpers ----------
+  const FAV_KEY = 'wplace_favorites_v1';
+  function readFavorites() {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.local.get([FAV_KEY], res => {
+          const raw = res && res[FAV_KEY];
+          if (Array.isArray(raw)) resolve(raw);
+          else {
+            try {
+              const local = localStorage.getItem(FAV_KEY);
+              resolve(local ? JSON.parse(local) : []);
+            } catch(e){ resolve([]); }
+          }
+        });
+      } catch(e) {
+        try {
+          const local = localStorage.getItem(FAV_KEY);
+          resolve(local ? JSON.parse(local) : []);
+        } catch(e2){ resolve([]); }
+      }
+    });
+  }
+  function writeFavorites(arr) {
+    try {
+      if (chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ [FAV_KEY]: arr });
+      } else {
+        localStorage.setItem(FAV_KEY, JSON.stringify(arr));
+      }
+    } catch(e){
+      try { localStorage.setItem(FAV_KEY, JSON.stringify(arr)); } catch(_) {}
+    }
+  }
+  function makeFavId() {
+    return 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+  }
+
+  // --------- Favorite add button behavior ----------
+  favBtn.addEventListener('click', async () => {
+    const raw = inputEl.value || '';
+    const parsed = parseFourCoords(raw);
+    if (!parsed) { showToast(t("fav_no_input")); return; }
+    const coords = parsed.join(', ');
+    const favName = '';
+    const item = { id: makeFavId(), name: favName, coords, createdAt: Date.now() };
+    const list = await readFavorites();
+    list.unshift(item);
+    writeFavorites(list);
+    showToast(t("fav_added"));
+    if (window.__wplace_fav_manager && typeof window.__wplace_fav_manager.refresh === 'function') {
+      window.__wplace_fav_manager.refresh();
+    }
+  });
+
   // --------- Stable draggable for panel ----------
   function installStableDraggable(rootEl, opts = {}) {
     const snapThreshold = typeof opts.snapThreshold === 'number' ? opts.snapThreshold : 6;
@@ -167,7 +406,7 @@
 
     let dragging = false;
     let startPointerX = 0, startPointerY = 0, startLeft = 0, startTop = 0, pointerId = null;
-    const handle = rootEl.querySelector('.drag-handle') || rootEl;
+    const handle = rootEl.querySelector(' .drag-handle') || rootEl;
 
     function onPointerDown(e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -541,7 +780,7 @@
   }
 
   window.__wplace = window.__wplace || {};
-  window.__wplace.toggleMinimized = function(){ 
+  window.__wplace.toggleMinimized = function(){
     const cur = root.getAttribute('data-wplace-minimized') === 'true';
     applyMinimizedState(!cur);
   };
@@ -875,7 +1114,7 @@
   const { lat, lng } = computeLatLngFromFour(tlx2, tly2, pxx2, pxy2);
   const latS = lat.toFixed(15).replace(/(?:\.0+|(\.\d+?)0+)$/,"$1");
   const lngS = lng.toFixed(15).replace(/(?:\.0+|(\.\d+?)0+)$/,"$1");
-  const zoom = 11.5;
+  const zoom = 15;
   const url = `https://wplace.live/?lat=${latS}&lng=${lngS}&zoom=${zoom}`;
   try {
     window.location.href = url;
@@ -884,7 +1123,7 @@
   }
 });
 
-  (async function consumePendingCoordsOnLoad() {
+(async function consumePendingCoordsOnLoad() {
   let pending = null;
   try {
     if (chrome && chrome.storage && chrome.storage.local) {
@@ -1061,12 +1300,1600 @@
   });
 })();
 
+// --------- Favorites manager panel (draggable) implementation - click-to-select, footer actions ----------
+(function favoritesManagerModule() {
+  let mgr = null;
+  let selectedId = null;
+  let currentList = [];
 
+  function createManager() {
+  if (document.getElementById('wplace_fav_manager')) {
+    return document.getElementById('wplace_fav_manager');
+  }
+  const m = document.createElement('div');
+  m.id = 'wplace_fav_manager';
+  m.setAttribute('role','dialog');
+  Object.assign(m.style, {
+    position: 'fixed',
+    zIndex: 2147483647,
+    width: '360px',
+    maxWidth: '90vw',
+    height: '340px',
+    background: 'rgba(10,10,10,0.95)',
+    color: '#e8e8e8',
+    borderRadius: '10px',
+    boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+    padding: '8px',
+    display: 'none',
+    flexDirection: 'column',
+    overflow: 'hidden'
+  });
 
-  // --------- final small checks ----------
+  m.innerHTML = `
+    <div id="wplace_fav_header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div class="drag-handle" style="font-weight:600;">${t("fav_manager")}</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button id="wplace_fav_close" class="wplace_btn small">✕</button>
+      </div>
+    </div>
+    <div id="wplace_fav_body" style="margin-top:8px; overflow:auto; flex:1; padding-right:6px;"></div>
+    <div id="wplace_fav_footer" style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+      <input id="wplace_fav_newname" placeholder="${t("fav_name_placeholder")}" style="flex:1; padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:#e8e8e8;" />
+      <button id="wplace_fav_add_from_input" class="wplace_btn small">${t("fav_add")}</button>
+    </div>
+    <div id="wplace_fav_actions" style="display:flex; gap:6px; margin-top:8px; border-top:1px solid rgba(255,255,255,0.04); padding-top:8px;">
+      <button id="wplace_fav_action_copy" class="wplace_btn">${t("fav_copy")}</button>
+      <button id="wplace_fav_action_jump" class="wplace_btn">${t("fav_jump")}</button>
+      <button id="wplace_fav_action_rename" class="wplace_btn">${t("fav_rename")}</button>
+      <button id="wplace_fav_action_delete" class="wplace_btn danger">${t("fav_delete")}</button>
+    </div>
+  `;
+  document.body.appendChild(m);
+
+  // 初始化位置（优先 chrome.storage.local 回退 localStorage）
   try {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(()=>{}).catch(()=>{});
+    chrome.storage.local.get(['wplace_fav_manager_pos'], res => {
+      const p = res && res.wplace_fav_manager_pos;
+      if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+        m.style.left = p.left + 'px'; m.style.top = p.top + 'px';
+      } else {
+        m.style.right = '20px'; m.style.bottom = '80px';
+      }
+    });
+  } catch(e){
+    try {
+      const raw = localStorage.getItem('wplace_fav_manager_pos');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+          m.style.left = p.left + 'px'; m.style.top = p.top + 'px';
+        } else { m.style.right = '20px'; m.style.bottom = '80px'; }
+      } else { m.style.right = '20px'; m.style.bottom = '80px'; }
+    } catch(e){ m.style.right = '20px'; m.style.bottom = '80px'; }
+  }
+
+  // 通过 header 可拖拽
+  (function makeDraggable(el){
+    const handle = el.querySelector('.drag-handle') || el;
+    let dragging = false, pointerId=null, sx=0, sy=0, sl=0, st=0;
+    handle.style.cursor = 'grab';
+    handle.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      ev.preventDefault();
+      dragging = true;
+      pointerId = ev.pointerId;
+      handle.setPointerCapture && handle.setPointerCapture(pointerId);
+      sx = ev.clientX; sy = ev.clientY;
+      const rect = el.getBoundingClientRect();
+      sl = rect.left; st = rect.top;
+      handle.style.cursor = 'grabbing';
+      window.addEventListener('pointermove', onMove, { passive:false });
+      window.addEventListener('pointerup', onUp, { passive:false });
+      window.addEventListener('pointercancel', onUp, { passive:false });
+    });
+    function onMove(ev){
+      if (!dragging || ev.pointerId !== pointerId) return;
+      ev.preventDefault();
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      const left = Math.round(sl + dx), top = Math.round(st + dy);
+      el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.right='auto'; el.style.bottom='auto';
     }
-  } catch (e){}
+    function onUp(ev){
+      if (!dragging || ev.pointerId !== pointerId) return;
+      dragging = false;
+      handle.releasePointerCapture && handle.releasePointerCapture(pointerId);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      handle.style.cursor = 'grab';
+      // persist 位置
+      try {
+        chrome.storage.local.set({ wplace_fav_manager_pos: { left: parseInt(el.style.left,10)||0, top: parseInt(el.style.top,10)||0 } });
+      } catch(e){
+        try { localStorage.setItem('wplace_fav_manager_pos', JSON.stringify({ left: parseInt(el.style.left,10)||0, top: parseInt(el.style.top,10)||0 })); } catch(_) {}
+      }
+    }
+  })(m);
+
+  // 关闭按钮
+  m.querySelector('#wplace_fav_close').addEventListener('click', () => { hideManager(); });
+
+  // 从输入添加收藏
+  m.querySelector('#wplace_fav_add_from_input').addEventListener('click', async () => {
+    const val = inputEl.value || '';
+    const parsed = parseFourCoords(val);
+    if (!parsed) { showToast(t("fav_no_input")); return; }
+    const name = (m.querySelector('#wplace_fav_newname') || {value:''}).value || '';
+    const item = { id: makeFavId(), name, coords: parsed.join(', '), createdAt: Date.now() };
+    const arr = await readFavorites();
+    arr.unshift(item);
+    writeFavorites(arr);
+    showToast(t("fav_added"));
+    refreshList();
+  });
+
+  // footer action 按钮引用
+  const btnCopy = m.querySelector('#wplace_fav_action_copy');
+  const btnJump = m.querySelector('#wplace_fav_action_jump');
+  const btnRename = m.querySelector('#wplace_fav_action_rename');
+  const btnDelete = m.querySelector('#wplace_fav_action_delete');
+
+  btnCopy.addEventListener('click', async () => {
+    const item = currentList.find(x => x.id === selectedId);
+    if (!item) { showToast(t('fav_empty')); return; }
+    try {
+      await navigator.clipboard.writeText(item.coords);
+      showToast(`${t('copied')} ${item.coords}`);
+    } catch (e) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = item.coords;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        if (ok) showToast(`${t('copied')} ${item.coords}`);
+        else showToast(t('copy_fail'));
+      } catch(_) { showToast(t('copy_fail')); }
+    }
+  });
+
+  btnJump.addEventListener('click', () => {
+  const item = currentList.find(x => x.id === selectedId);
+  if (!item) { showToast(t('fav_empty')); return; }
+  const parsed = parseFourCoords(item.coords);
+  if (!parsed) { showToast(t('fav_no_input')); return; }
+
+  // 将四元坐标写入 pending key，目标页加载时会消费并填充
+  const coordsToStore = parsed.join(',');
+  try {
+    if (chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ wplace_pending_coords: coordsToStore });
+    } else {
+      localStorage.setItem('wplace_pending_coords', coordsToStore);
+    }
+  } catch (e) {
+    try { localStorage.setItem('wplace_pending_coords', coordsToStore); } catch (_) {}
+  }
+
+  // 计算 lat/lng 并导航（照搬主界面 jump 的 URL 生成逻辑）
+  try {
+    const [tlx, tly, pxx, pxy] = parsed;
+    const { lat, lng } = computeLatLngFromFour(tlx, tly, pxx, pxy);
+    const latS = lat.toFixed(15).replace(/(?:\.0+|(\.\d+?)0+)$/,"$1");
+    const lngS = lng.toFixed(15).replace(/(?:\.0+|(\.\d+?)0+)$/,"$1");
+    const url = `https://wplace.live/?lat=${latS}&lng=${lngS}&zoom=15`;
+    try { window.location.href = url; } catch (e) { try { top.location.href = url; } catch (_) { showToast("Navigation blocked"); } }
+  } catch (e) {
+    showToast(t('fav_no_input'));
+  }
+});
+
+
+  btnRename.addEventListener('click', async () => {
+    const item = currentList.find(x => x.id === selectedId);
+    if (!item) { showToast(t('fav_empty')); return; }
+    const newName = prompt(t('fav_rename'), item.name || '');
+    if (newName === null) return;
+    item.name = String(newName || '').trim();
+    const list = await readFavorites();
+    const idx = list.findIndex(x => x.id === item.id);
+    if (idx >= 0) { list[idx].name = item.name; writeFavorites(list); refreshList(); }
+  });
+
+  btnDelete.addEventListener('click', async () => {
+    const item = currentList.find(x => x.id === selectedId);
+    if (!item) { showToast(t('fav_empty')); return; }
+    if (!confirm(t('fav_delete') + '?')) return;
+    let list = await readFavorites();
+    list = list.filter(x => x.id !== item.id);
+    writeFavorites(list);
+    selectedId = null;
+    refreshList();
+  });
+
+  mgr = m;
+  return m;
+}
+
+  function showManager() {
+    const m = createManager();
+    m.style.display = 'flex';
+    refreshList();
+    window.__wplace_fav_manager = {
+      refresh: refreshList,
+      hide: hideManager,
+      show: showManager
+    };
+  }
+  function hideManager() {
+    if (!mgr) return;
+    mgr.style.display = 'none';
+  }
+
+  async function refreshList() {
+    const m = createManager();
+    const body = m.querySelector('#wplace_fav_body');
+    if (!body) return;
+    body.innerHTML = '';
+    const arr = await readFavorites();
+    currentList = Array.isArray(arr) ? arr.slice() : [];
+    if (!currentList || currentList.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.opacity = '0.6';
+      empty.style.padding = '10px';
+      empty.textContent = t('fav_empty');
+      body.appendChild(empty);
+      // clear selection
+      selectedId = null;
+      updateFooterState();
+      return;
+    }
+
+    // render clickable list items (single column)
+    for (const item of currentList) {
+      const row = document.createElement('div');
+      row.className = 'wplace_fav_row';
+      Object.assign(row.style, {
+        display:'flex', flexDirection:'column', gap:'4px', padding:'8px', borderRadius:'6px',
+        cursor:'pointer', marginBottom:'6px', background:'rgba(255,255,255,0.02)'
+      });
+
+      const topLine = document.createElement('div');
+      topLine.style.display = 'flex';
+      topLine.style.alignItems = 'center';
+      topLine.style.justifyContent = 'space-between';
+
+      const nameEl = document.createElement('div');
+      nameEl.style.flex = '1';
+      nameEl.style.minWidth = '0';
+      nameEl.style.wordBreak = 'break-all';
+      nameEl.style.fontWeight = '600';
+      nameEl.textContent = item.name && item.name.length>0 ? item.name : item.coords;
+
+      const timeEl = document.createElement('div');
+      timeEl.style.opacity = '0.6';
+      timeEl.style.fontSize = '12px';
+      try {
+        const d = new Date(item.createdAt);
+        timeEl.textContent = d.toLocaleString();
+      } catch(e){ timeEl.textContent = ''; }
+
+      const coordsEl = document.createElement('div');
+      coordsEl.style.opacity = '0.85';
+      coordsEl.style.fontSize = '12px';
+      coordsEl.textContent = item.coords;
+
+      topLine.appendChild(nameEl);
+      topLine.appendChild(timeEl);
+
+      row.appendChild(topLine);
+      row.appendChild(coordsEl);
+
+      // selection handling
+      row.addEventListener('click', () => {
+        selectedId = item.id;
+        // highlight selection: clear others
+        const rows = body.querySelectorAll('.wplace_fav_row');
+        rows.forEach(r => { r.style.boxShadow = ''; r.style.background = 'rgba(255,255,255,0.02)'; });
+        row.style.boxShadow = 'inset 0 0 0 2px rgba(255,255,255,0.06)';
+        row.style.background = 'rgba(255,255,255,0.03)';
+        // populate rename input with current name for quick edit
+        const nm = m.querySelector('#wplace_fav_newname');
+        if (nm) nm.value = item.name || '';
+        updateFooterState();
+      });
+
+      // if this item is current selection, mark it
+      if (selectedId === item.id) {
+        row.style.boxShadow = 'inset 0 0 0 2px rgba(255,255,255,0.06)';
+        row.style.background = 'rgba(255,255,255,0.03)';
+      }
+
+      body.appendChild(row);
+    }
+
+    // ensure footer state updated
+    updateFooterState();
+  }
+
+  function updateFooterState() {
+    const m = createManager();
+    const btnCopy = m.querySelector('#wplace_fav_action_copy');
+    const btnJump = m.querySelector('#wplace_fav_action_jump');
+    const btnRename = m.querySelector('#wplace_fav_action_rename');
+    const btnDelete = m.querySelector('#wplace_fav_action_delete');
+    const nm = m.querySelector('#wplace_fav_newname');
+
+    const enabled = !!currentList.find(x => x.id === selectedId);
+    [btnCopy, btnJump, btnRename, btnDelete].forEach(b => {
+      if (!b) return;
+      b.disabled = !enabled;
+      b.style.opacity = enabled ? '1' : '0.45';
+      b.style.pointerEvents = enabled ? '' : 'none';
+    });
+
+    if (nm) {
+      nm.disabled = !enabled;
+      nm.style.opacity = enabled ? '1' : '0.5';
+    }
+  }
+
+  // open manager when button clicked
+  favManagerBtn.addEventListener('click', () => {
+    showManager();
+  });
+
+  // expose show/hide on window for other code
+  window.__wplace_show_fav_manager = function(){ showManager(); };
+  window.__wplace_hide_fav_manager = function(){ hideManager(); };
+
+})();
+
+// --------- Ruler module ----------
+(function rulerModule() {
+  let panel = null;
+  let pickingMode = null; // 'start' | 'end' | null
+  let startCoords = null; // [tlx, tly, pxx, pxy]
+  let endCoords = null;   // [tlx, tly, pxx, pxy]
+
+  function createRulerPanel() {
+    if (document.getElementById('wplace_ruler_panel')) return document.getElementById('wplace_ruler_panel');
+    const m = document.createElement('div');
+    m.id = 'wplace_ruler_panel';
+    m.setAttribute('role','dialog');
+    Object.assign(m.style, {
+      position: 'fixed',
+      zIndex: 2147483647,
+      width: '380px',
+      maxWidth: '94vw',
+      height: '260px',
+      background: 'rgba(10,10,10,0.97)',
+      color: '#e8e8e8',
+      borderRadius: '10px',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+      padding: '10px',
+      display: 'none',
+      flexDirection: 'column',
+      overflow: 'hidden',
+      fontFamily: 'sans-serif'
+    });
+
+    m.innerHTML = `
+      <div id="wplace_ruler_header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div class="drag-handle" style="font-weight:600;">${t('ruler_title')}</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button id="wplace_ruler_close" class="wplace_btn small">✕</button>
+        </div>
+      </div>
+      <div id="wplace_ruler_body" style="margin-top:8px; overflow:auto; flex:1; display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div style="flex:1; display:flex; flex-direction:column;">
+            <label style="font-size:12px; opacity:0.8;">${t('ruler_start_label')}</label>
+            <input id="wplace_ruler_start" placeholder="TlX, TlY, PxX, PxY" style="padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:#e8e8e8; width:100%;" />
+          </div>
+          <button id="wplace_ruler_pick_start" class="wplace_btn small">${t('ruler_pick_start')}</button>
+        </div>
+
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div style="flex:1; display:flex; flex-direction:column;">
+            <label style="font-size:12px; opacity:0.8;">${t('ruler_end_label')}</label>
+            <input id="wplace_ruler_end" placeholder="TlX, TlY, PxX, PxY" style="padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:#e8e8e8; width:100%;" />
+          </div>
+          <button id="wplace_ruler_pick_end" class="wplace_btn small">${t('ruler_pick_end')}</button>
+        </div>
+
+        <div id="wplace_ruler_result" style="margin-top:6px; font-size:13px; opacity:0.95;">
+          <div id="wplace_ruler_offsets">${t('ruler_offset_label')} —</div>
+          <div id="wplace_ruler_area">${t('ruler_area_label')} —</div>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px;">
+          <button id="wplace_ruler_clear" class="wplace_btn small">${t('ruler_clear')}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(m);
+
+    // draggable by header
+    (function makeDraggable(el){
+      const handle = el.querySelector('.drag-handle') || el;
+      let dragging = false, pointerId=null, sx=0, sy=0, sl=0, st=0;
+      handle.style.cursor = 'grab';
+      handle.addEventListener('pointerdown', (ev) => {
+        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+        ev.preventDefault();
+        dragging = true;
+        pointerId = ev.pointerId;
+        handle.setPointerCapture && handle.setPointerCapture(pointerId);
+        sx = ev.clientX; sy = ev.clientY;
+        const rect = el.getBoundingClientRect();
+        sl = rect.left; st = rect.top;
+        handle.style.cursor = 'grabbing';
+        window.addEventListener('pointermove', onMove, { passive:false });
+        window.addEventListener('pointerup', onUp, { passive:false });
+        window.addEventListener('pointercancel', onUp, { passive:false });
+      });
+      function onMove(ev){
+        if (!dragging || ev.pointerId !== pointerId) return;
+        ev.preventDefault();
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        const left = Math.round(sl + dx), top = Math.round(st + dy);
+        el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.right='auto'; el.style.bottom='auto';
+      }
+      function onUp(ev){
+        if (!dragging || ev.pointerId !== pointerId) return;
+        dragging = false;
+        handle.releasePointerCapture && handle.releasePointerCapture(pointerId);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        handle.style.cursor = 'grab';
+        try {
+          chrome.storage.local.set({ wplace_ruler_pos: { left: parseInt(el.style.left,10)||0, top: parseInt(el.style.top,10)||0 } });
+        } catch(e){
+          try { localStorage.setItem('wplace_ruler_pos', JSON.stringify({ left: parseInt(el.style.left,10)||0, top: parseInt(el.style.top,10)||0 })); } catch(_) {}
+        }
+      }
+    })(m);
+
+    // close
+    m.querySelector('#wplace_ruler_close').addEventListener('click', () => { hideRuler(); });
+
+    // clear
+    m.querySelector('#wplace_ruler_clear').addEventListener('click', () => {
+      startCoords = null; endCoords = null; pickingMode = null;
+      const sIn = m.querySelector('#wplace_ruler_start');
+      const eIn = m.querySelector('#wplace_ruler_end');
+      if (sIn) sIn.value = '';
+      if (eIn) eIn.value = '';
+      updateRulerResult();
+    });
+
+    // pick buttons
+    m.querySelector('#wplace_ruler_pick_start').addEventListener('click', () => {
+      beginPick('start');
+    });
+    m.querySelector('#wplace_ruler_pick_end').addEventListener('click', () => {
+      beginPick('end');
+    });
+
+    // manual input change
+    const startInput = m.querySelector('#wplace_ruler_start');
+    const endInput = m.querySelector('#wplace_ruler_end');
+    if (startInput) startInput.addEventListener('change', () => {
+      const p = parseFourCoords(startInput.value);
+      startCoords = p; updateRulerResult();
+    });
+    if (endInput) endInput.addEventListener('change', () => {
+      const p = parseFourCoords(endInput.value);
+      endCoords = p; updateRulerResult();
+    });
+
+    // restore position
+    try {
+      chrome.storage.local.get(['wplace_ruler_pos'], res => {
+        const p = res && res.wplace_ruler_pos;
+        if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+          m.style.left = p.left + 'px'; m.style.top = p.top + 'px';
+        } else {
+          m.style.right = '30px'; m.style.bottom = '120px';
+        }
+      });
+    } catch(e){
+      try {
+        const raw = localStorage.getItem('wplace_ruler_pos');
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+            m.style.left = p.left + 'px'; m.style.top = p.top + 'px';
+          } else { m.style.right = '30px'; m.style.bottom = '120px'; }
+        } else { m.style.right = '30px'; m.style.bottom = '120px'; }
+      } catch(e){ m.style.right = '30px'; m.style.bottom = '120px'; }
+    }
+
+    panel = m;
+    updateRulerResult();
+    return m;
+  }
+
+  function showRuler() {
+    const m = createRulerPanel();
+    m.style.display = 'flex';
+  }
+
+  function hideRuler() {
+    if (!panel) return;
+    panel.style.display = 'none';
+    pickingMode = null;
+  }
+
+  function updateRulerI18n() {
+  try {
+    const m = document.getElementById('wplace_ruler_panel');
+    if (!m) return;
+
+    // header/title
+    const header = m.querySelector('.drag-handle');
+    if (header) header.textContent = t('ruler_title');
+
+    // pick buttons / clear / result labels
+    const pStart = m.querySelector('#wplace_ruler_pick_start');
+    if (pStart) pStart.textContent = t('ruler_pick_start');
+
+    const pEnd = m.querySelector('#wplace_ruler_pick_end');
+    if (pEnd) pEnd.textContent = t('ruler_pick_end');
+
+    const clearBtn = m.querySelector('#wplace_ruler_clear');
+    if (clearBtn) clearBtn.textContent = t('ruler_clear');
+
+    // labels: pick all label elements and set by index if present
+    const labels = Array.from(m.querySelectorAll('label'));
+    if (labels.length >= 1) labels[0].textContent = t('ruler_start_label');
+    if (labels.length >= 2) labels[1].textContent = t('ruler_end_label');
+
+    // update the result area if visible
+    const offEl = m.querySelector('#wplace_ruler_offsets');
+    if (offEl) {
+      // if offsets currently empty/placeholder, keep the placeholder format
+      const cur = offEl.textContent || '';
+      if (!cur.includes(',')) offEl.textContent = `${t('ruler_offset_label')} —`;
+      else {
+        // preserve current numeric part if present (recompute will run anyway)
+        // safe fallback: rewrite label prefix only
+        const parts = cur.split(' ');
+        offEl.textContent = `${t('ruler_offset_label')} ${parts.slice(1).join(' ')}`.trim();
+      }
+    }
+
+    const areaEl = m.querySelector('#wplace_ruler_area');
+    if (areaEl) {
+      const cur = areaEl.textContent || '';
+      if (!cur.match(/\d/)) areaEl.textContent = `${t('ruler_area_label')} —`;
+      else {
+        const parts = cur.split(' ');
+        areaEl.textContent = `${t('ruler_area_label')} ${parts.slice(1).join(' ')}`.trim();
+      }
+    }
+
+    // ensure computed values refresh with current language text
+    updateRulerResult();
+  } catch (e) {}
+}
+
+
+  function safePickLatestCoordsOnce(timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      let resolved = false;
+      try {
+        if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ type: "WPLACE_GET_LATEST" }, (resp) => {
+            try {
+              const coords = resp && resp.coords ? String(resp.coords) : null;
+              if (coords) { resolved = true; resolve(coords); return; }
+            } catch(e){}
+            try {
+              chrome.runtime.sendMessage({ type: "WPLACE_TRIGGER_FETCH" }, () => {
+                const started = Date.now();
+                const interval = setInterval(() => {
+                  try {
+                    chrome.runtime.sendMessage({ type: "WPLACE_GET_LATEST" }, (r2) => {
+                      const latest = r2 && r2.coords ? String(r2.coords) : null;
+                      if (latest) {
+                        clearInterval(interval);
+                        resolved = true; resolve(latest); return;
+                      }
+                      if (Date.now() - started >= timeoutMs) {
+                        clearInterval(interval);
+                        resolved = true; resolve(null); return;
+                      }
+                    });
+                  } catch (e) { clearInterval(interval); resolved = true; resolve(null); }
+                }, 250);
+              });
+            } catch (e) { if (!resolved) { resolved = true; resolve(null); } }
+          });
+          setTimeout(() => { if (!resolved) { resolved = true; resolve(null); } }, timeoutMs + 200);
+          return;
+        }
+      } catch (e) {}
+      try {
+        const pending = localStorage.getItem('wplace_pending_coords');
+        if (pending) { resolve(pending); return; }
+      } catch(e){}
+      try {
+        if (inputEl && inputEl.value) {
+          const maybe = String(inputEl.value || '').trim();
+          if (maybe.split(',').map(s=>s.trim()).filter(Boolean).length === 4) { resolve(maybe); return; }
+        }
+      } catch(e){}
+      resolve(null);
+    });
+  }
+
+  async function beginPick(kind) {
+    if (!panel) createRulerPanel();
+    pickingMode = kind;
+    showToast(t('ruler_wait_pick'), 2500);
+    try {
+      const coords = await safePickLatestCoordsOnce(4000);
+      if (!coords) {
+        showToast(t('ruler_no_coords'));
+        pickingMode = null;
+        return;
+      }
+      const cleaned = String(coords).split(',').map(s => s.trim()).join(', ');
+      if (kind === 'start') {
+        startCoords = parseFourCoords(cleaned);
+        const inp = panel.querySelector('#wplace_ruler_start');
+        if (inp) { inp.value = startCoords ? startCoords.join(', ') : cleaned; }
+      } else {
+        endCoords = parseFourCoords(cleaned);
+        const inp = panel.querySelector('#wplace_ruler_end');
+        if (inp) { inp.value = endCoords ? endCoords.join(', ') : cleaned; }
+      }
+      showToast(`${t('ruler_pick_toast')} ${cleaned}`, 1500);
+      updateRulerResult();
+    } catch (e) {
+      showToast(t('ruler_no_coords'));
+    } finally {
+      pickingMode = null;
+    }
+  }
+
+  function computeXYFromFour(arr) {
+    if (!arr || arr.length !== 4) return null;
+    const [TlX, TlY, PxX, PxY] = arr.map(Number);
+    if ([TlX, TlY, PxX, PxY].some(n => Number.isNaN(n))) return null;
+    const X = TlX * 1000 + PxX;
+    const Y = TlY * 1000 + PxY;
+    return { X, Y };
+  }
+
+  function updateRulerResult() {
+    if (!panel) return;
+    const offEl = panel.querySelector('#wplace_ruler_offsets');
+    const areaEl = panel.querySelector('#wplace_ruler_area');
+    if (!offEl || !areaEl) return;
+
+    const a = computeXYFromFour(startCoords);
+    const b = computeXYFromFour(endCoords);
+
+    if (!a || !b) {
+      offEl.textContent = `${t('ruler_offset_label')} —`;
+      areaEl.textContent = `${t('ruler_area_label')} —`;
+      return;
+    }
+
+    const deltaX = b.X - a.X + 1;
+    const deltaY = b.Y - a.Y + 1;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+    const area = absX * absY;
+
+    offEl.textContent = `${t('ruler_offset_label')} ${deltaX}, ${deltaY}`;
+    areaEl.textContent = `${t('ruler_area_label')} ${area}`;
+  }
+
+  window.__wplace_show_ruler = showRuler;
+  window.__wplace_hide_ruler = hideRuler;
+
+  try {
+    const rbtn = document.getElementById('wplace_ruler_btn') || window.__wplace_ruler_btn;
+    if (rbtn) {
+      rbtn.addEventListener('click', () => {
+        const m = createRulerPanel();
+        if (m.style.display === 'flex') hideRuler(); else showRuler();
+      });
+    }
+  } catch (e) { console.warn('ruler attach failed', e); }
+
+  window.__wplace_update_ruler_i18n = updateRulerI18n;
+})();
+
+
+(function bindMapClickFillInput() {
+  const MAP_SELECTORS = [
+    '.leaflet-container',
+    '#map',
+    '.mapboxgl-canvas',
+    '.gm-style',
+    '[data-map-root]',
+    '.ol-viewport'
+  ];
+
+  function isMapElement(el) {
+    if (!el) return false;
+    try {
+      for (const sel of MAP_SELECTORS) {
+        if (el.matches && el.matches(sel)) return true;
+        if (el.closest && el.closest(sel)) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // 工具：调用 background 获取最新一次已知 coords（原有接口）
+  function requestLatestOnce(cb) {
+    try {
+      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ type: "WPLACE_GET_LATEST" }, (resp) => {
+          try { cb(null, resp && resp.coords ? String(resp.coords) : null); } catch(e){ cb(e); }
+        });
+      } else {
+        (async () => { try { const c = await getLatestCoordsString(); cb(null, c); } catch(e){ cb(e); } })();
+      }
+    } catch (e) { cb(e); }
+  }
+
+  // 触发后台去拉最新坐标（后台应开启网络请求以拿到“当前点击”的坐标）
+  function triggerBackgroundFetch(cb) {
+    try {
+      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        // 发送一个触发消息，后台收到后应发起网络/服务器请求并更新其内部最新 coords
+        chrome.runtime.sendMessage({ type: "WPLACE_TRIGGER_FETCH" }, (resp) => {
+          // 不依赖 resp 内容，立即回到 caller 以开始轮询
+          try { cb && cb(null, resp); } catch(e){ cb && cb(e); }
+        });
+      } else {
+        // 如果没有 runtime 可用，直接回调（caller 会 fallback 到读取本地）
+        cb && cb(null);
+      }
+    } catch (e) { cb && cb(e); }
+  }
+
+  // 触发 fetch 后轮询 get_latest，直到值变化或超时
+  function triggerThenPollForLatest({ timeoutMs = 5000, intervalMs = 200 }, onDone) {
+    // 先拿一个基线值，然后触发后台，再开始轮询直到值变化或超时
+    requestLatestOnce((err, baseline) => {
+      if (err) baseline = null;
+      triggerBackgroundFetch(() => {
+        const startedAt = Date.now();
+        let lastSeen = baseline;
+        const timer = setInterval(() => {
+          requestLatestOnce((err2, latest) => {
+            // 如果读取出错或无值，继续轮询直到超时
+            if (latest && String(latest) !== String(lastSeen)) {
+              clearInterval(timer);
+              onDone(null, latest);
+              return;
+            }
+            if (Date.now() - startedAt >= timeoutMs) {
+              clearInterval(timer);
+              // final attempt to return whatever exists (may be null)
+              onDone(null, latest || lastSeen || null);
+            }
+            // 否则继续等待
+            lastSeen = latest;
+          });
+        }, intervalMs);
+      });
+    });
+  }
+
+  // 点击后：触发后台拉取当次最新坐标并填入输入框
+  function requestFetchAndFill() {
+  try {
+    triggerThenPollForLatest({ timeoutMs: 5000, intervalMs: 200 }, (err, coords) => {
+      try {
+        if (!coords) {
+          showToast(t('no_share'));
+          return;
+        }
+        const cleaned = String(coords).split(',').map(s => s.trim()).join(', ');
+        // Use safeDispatchInputEvents if available to handle framework controlled inputs
+        if (typeof safeDispatchInputEvents === 'function' && inputEl) {
+          safeDispatchInputEvents(inputEl, cleaned);
+        } else if (inputEl) {
+          inputEl.value = cleaned;
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          try { localStorage.setItem('wplace_pending_coords', cleaned); } catch (e) {}
+        }
+        showToast(cleaned, 1200);
+      } catch (e) {}
+    });
+  } catch (e) {}
+}
+
+
+  // 全局 click 委托：点击落在地图容器或其子元素时触发
+  // 全局 click 委托：点击落在地图容器或其子元素时触发（延迟 1 秒再去拉取并填充）
+document.addEventListener('click', (ev) => {
+  try {
+    const path = ev.composedPath ? ev.composedPath() : (ev.path || []);
+    if (!path || path.length === 0) {
+      // fallback to target if composedPath not available
+      if (!ev.target) return;
+      if (ev.target.closest && ev.target.closest('#wplace_locator')) return;
+      if (!isMapElement(ev.target)) return;
+      setTimeout(() => { try { requestFetchAndFill(); } catch(e){} }, 700);
+      return;
+    }
+
+    // ignore clicks inside our UI
+    for (const node of path) {
+      try { if (node && node.id === 'wplace_locator') return; } catch(e){}
+    }
+
+    // debouncing
+    if (!document.__wplace_click_debounce_ts) document.__wplace_click_debounce_ts = 0;
+    const now = Date.now();
+    if (now - document.__wplace_click_debounce_ts < 600) return;
+    document.__wplace_click_debounce_ts = now;
+
+    // If any node in path looks like map container, trigger fetch+fill after small delay
+    function pathHasMapElementFallback(p) {
+      try {
+        for (const node of p) {
+          if (!node || typeof node !== 'object') continue;
+          if (node.nodeType && node.nodeType !== 1) continue;
+          if (node.matches) {
+            for (const sel of MAP_SELECTORS) {
+              try { if (node.matches(sel)) return true; } catch(e){}
+            }
+          }
+          const tag = (node.tagName || '').toUpperCase();
+          if (tag === 'CANVAS') {
+            let up = node.parentElement; let steps = 0;
+            while (up && steps < 8) {
+              const cls = (up.className || '').toString().toLowerCase();
+              if (cls && (cls.includes('map') || cls.includes('leaflet') || cls.includes('mapbox') || cls.includes('gm') || cls.includes('ol'))) return true;
+              for (const sel of MAP_SELECTORS) {
+                try { if (up.matches && up.matches(sel)) return true; } catch(e){}
+              }
+              up = up.parentElement; steps++;
+            }
+          }
+        }
+      } catch(e){}
+      return false;
+    }
+
+    if (pathHasMapElement(path) || pathHasMapElementFallback(path)) {
+      setTimeout(() => {
+        try { requestFetchAndFill(); } catch(e){}
+      }, 700);
+    }
+  } catch (e) {
+    // ignore
+  }
+}, true);
+
+
+})();
+
+function installShareAndFavHandlers() {
+  // 依赖：shareBtn, favBtn, inputEl, safeDispatchInputEvents,
+  // parseFourCoords, readFavorites, writeFavorites, makeFavId, showToast, t
+  if (typeof shareBtn === 'undefined' || typeof favBtn === 'undefined' || typeof inputEl === 'undefined') {
+    console.warn('installShareAndFavHandlers: missing required elements (shareBtn, favBtn, inputEl)');
+    return false;
+  }
+
+  // 如果先前存在早期 handler，先移除它（以避免并存导致 race）
+  try {
+    if (favBtn.__wplace_early_fav_handler) {
+      try { favBtn.removeEventListener('click', favBtn.__wplace_early_fav_handler); } catch(e) {}
+      // 保留引用以便调试，但不再绑定
+    }
+    if (shareBtn.__wplace_early_share_handler) {
+      try { shareBtn.removeEventListener('click', shareBtn.__wplace_early_share_handler); } catch(e) {}
+    }
+  } catch (e) {}
+
+  // helper: 从 background/localStorage/input 中选取最新 coords 并填入 input；forceSave=true 时同时加入收藏
+  async function fetchAndFillLatestCoords(forceSave = false) {
+    let coords = null;
+
+    // 优先从 background 获取最新（WPLACE_GET_LATEST）
+    try {
+      coords = await new Promise(resolve => {
+        try {
+          chrome.runtime.sendMessage({ type: "WPLACE_GET_LATEST" }, (resp) => {
+            try { resolve(resp && resp.coords ? String(resp.coords) : null); } catch (e) { resolve(null); }
+          });
+        } catch (e) { resolve(null); }
+      });
+    } catch (e) {
+      coords = null;
+    }
+
+    // 回退：localStorage 中 pending key
+    try {
+      if (!coords) {
+        const pending = localStorage.getItem('wplace_pending_coords');
+        if (pending) coords = pending;
+      }
+    } catch (e) {}
+
+    // 回退：当前 input（若看起来是 4 个逗号值）
+    try {
+      if (!coords && inputEl && inputEl.value) {
+        const maybe = String(inputEl.value || '').trim();
+        if (maybe.split(',').map(s => s.trim()).filter(Boolean).length === 4) coords = maybe;
+      }
+    } catch (e) {}
+
+    // 若仍无 coords，尝试触发后台抓取然后轮询（best-effort）
+    if (!coords) {
+      try {
+        await new Promise((resolve) => {
+          // 较短超时的轮询：触发后台请求后最多等 4s，每 250ms 轮询
+          const timeoutMs = 4000;
+          const intervalMs = 250;
+          let baseline = null;
+          // baseline
+          try {
+            chrome.runtime.sendMessage({ type: "WPLACE_GET_LATEST" }, (resp) => {
+              try { baseline = resp && resp.coords ? String(resp.coords) : null; } catch(e){}
+              // 发触发请求
+              try {
+                chrome.runtime.sendMessage({ type: "WPLACE_TRIGGER_FETCH" }, () => {
+                  const started = Date.now();
+                  const poll = setInterval(() => {
+                    try {
+                      chrome.runtime.sendMessage({ type: "WPLACE_GET_LATEST" }, (resp2) => {
+                        const latest = resp2 && resp2.coords ? String(resp2.coords) : null;
+                        if (latest && String(latest) !== String(baseline)) {
+                          clearInterval(poll);
+                          coords = latest;
+                          resolve();
+                          return;
+                        }
+                        if (Date.now() - started >= timeoutMs) {
+                          clearInterval(poll);
+                          coords = latest || baseline || null;
+                          resolve();
+                        }
+                      });
+                    } catch (e) {
+                      clearInterval(poll);
+                      resolve();
+                    }
+                  }, intervalMs);
+                });
+              } catch (e) {
+                resolve();
+              }
+            });
+          } catch (e) { resolve(); }
+        });
+      } catch (e) {}
+    }
+
+    if (!coords) {
+      showToast(t('no_share'));
+      return null;
+    }
+
+    const cleaned = String(coords).split(',').map(s => s.trim()).join(', ');
+
+    // 写回 panel input（使用 safeDispatchInputEvents 以兼容框架受控输入）
+    try {
+      if (inputEl) {
+        safeDispatchInputEvents(inputEl, cleaned);
+      } else {
+        try { localStorage.setItem('wplace_pending_coords', cleaned); } catch (e) {}
+      }
+      showToast(cleaned, 1200);
+    } catch (e) {}
+
+    // 如果要求同时保存到收藏
+    if (forceSave) {
+      try {
+        const parsed = parseFourCoords(cleaned);
+        if (parsed) {
+          const coordsStr = parsed.join(', ');
+          const item = { id: makeFavId(), name: '', coords: coordsStr, createdAt: Date.now() };
+          try {
+            const arr = await readFavorites();
+            arr.unshift(item);
+            writeFavorites(arr);
+            try { if (window.__wplace_fav_manager && typeof window.__wplace_fav_manager.refresh === 'function') window.__wplace_fav_manager.refresh(); } catch(e){}
+            showToast(t('fav_added'));
+          } catch (e) {
+            showToast(t('fav_no_input'));
+          }
+        } else {
+          showToast(t('fav_no_input'));
+        }
+      } catch (e) {
+        showToast(t('fav_no_input'));
+      }
+    }
+
+    return cleaned;
+  }
+
+  // Replace/attach share button行为：先确保 panel 有最新 coords 再尝试复制
+  try {
+    shareBtn.__wplace_old_share_handler = async function enhancedShareHandler() {
+      try {
+        const coords = await fetchAndFillLatestCoords(false);
+        if (!coords) return;
+        try {
+          await navigator.clipboard.writeText(coords);
+          showToast(`${t('copied')} ${coords}`);
+        } catch (e) {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = coords;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            ta.remove();
+            if (ok) showToast(`${t('copied')} ${coords}`);
+            else showToast(t('copy_fail'));
+          } catch (e2) { showToast(t('copy_fail')); }
+        }
+      } catch (e) {
+        showToast(t('no_share'));
+      }
+    };
+    shareBtn.addEventListener('click', shareBtn.__wplace_old_share_handler);
+  } catch (e) {
+    console.warn('installShareAndFavHandlers: shareBtn attach failed', e);
+  }
+
+  // Replace/attach fav (star) button行为：先拉最新 coords 并填入，再保存为收藏
+  try {
+    favBtn.__wplace_old_fav_handler = async function enhancedFavHandler() {
+      try {
+        const coords = await fetchAndFillLatestCoords(true); // true -> fill then save
+        // fetchAndFillLatestCoords 已在内部 showToast, 保存并刷新列表
+      } catch (e) {
+        showToast(t('fav_no_input'));
+      }
+    };
+    favBtn.addEventListener('click', favBtn.__wplace_old_fav_handler);
+  } catch (e) {
+    console.warn('installShareAndFavHandlers: favBtn attach failed', e);
+  }
+
+  return true;
+}
+
+// 立即安装（安全尝试）
+try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndFavHandlers failed', e); }
+
+(function installClickCenterPageZoomAuto() {
+  if (window.__slowWheelUntilButtonGone || window.__wplace_click_center_zoom_installed) return;
+  window.__wplace_click_center_zoom_installed = true;
+
+  const DEFAULT = {
+    // click-based slow wheel settings (single-click behavior unchanged)
+    deltaPerEvent: -300,
+    intervalMs: 100,
+    maxEvents: 5000,
+    buttonSelector: 'button.btn.sm\\:btn-lg.duration.text-nowrap.text-xs.transition-opacity.sm\\:text-base',
+    buttonTextMustContain: 'Zoom in to see the pixels',
+    useCapture: true,
+    clickMoveThreshold: 6,
+    clickMaxDurationMs: 500,
+    // notification selector variants (including exact element you pasted)
+    removeNotificationSelector:
+      'section[aria-label="Notifications alt+T"][aria-live="polite"][aria-relevant="additions text"][aria-atomic="false"].svelte-tppj9g[tabindex="-1"],' +
+      'section[aria-label="Notifications alt+T"][aria-live="polite"][aria-relevant="additions text"][aria-atomic="false"][tabindex="-1"],' +
+      'section[aria-label="Notifications alt+T"][tabindex="-1"].svelte-tppj9g,' +
+      'section[aria-label="Notifications alt+T"],' +
+      'section.svelte-tppj9g[aria-label="Notifications alt+T"]',
+    // keys: Q/E for continuous zoom
+    zoomKey: 'q',
+    shrinkKey: 'e',
+    // single-shot smooth settings (simulateZoom/simulateShrink)
+    smoothDurationMs: 800,
+    zoomCount: 8,
+    shrinkCount: 8,
+    zoomDeltaPerEventMultiplier: 0.45,
+    shrinkDeltaPerEventMultiplier: 0.45,
+    // continuous fixed-rate control: wheel-delta applied per second while holding Q/E
+    // 调整此值来增减按住时的放缩速度（单位：wheel delta / second）
+    controlZoomDeltaPerSecond: 2400
+  };
+
+  const state = {
+    cfg: Object.assign({}, DEFAULT),
+    // click-slow-wheel
+    running: false,
+    sent: 0,
+    timerId: null,
+    observer: null,
+    buttonObserver: null,
+    notifObserver: null,
+    lastMousePos: null,
+    lastPoint: { x: 0, y: 0 },
+
+    // click detection
+    mouseDownPos: null,
+    mouseDownTime: 0,
+    moved: false,
+    listenersAttached: false,
+
+    // pointer tracking
+    pointerListenerAttached: false,
+
+    // single-shot smooth controller
+    smoothController: null,
+
+    // continuous zoom state for Q/E (RAF-driven)
+    continuousZoom: { rafId: null, running: false, direction: 0, lastTime: 0 }
+  };
+
+  /* ---------- helpers ---------- */
+  function qButton() {
+    const sel = state.cfg.buttonSelector || '';
+    try {
+      const list = Array.from(document.querySelectorAll(sel));
+      if (!list.length) return null;
+      if (!state.cfg.buttonTextMustContain) return list[0];
+      for (const el of list) {
+        if (el && el.textContent && el.textContent.includes(state.cfg.buttonTextMustContain)) return el;
+      }
+      return list[0];
+    } catch (e) { return null; }
+  }
+
+  function isVisible(el) {
+    if (!el) return false;
+    if (!document.contains(el)) return false;
+    try {
+      const s = getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity || '1') === 0) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function makeWheel(x, y, deltaX, deltaY) {
+    try {
+      return new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        deltaX: deltaX || 0,
+        deltaY: deltaY || 0
+      });
+    } catch (e) {
+      const ev = document.createEvent('Event');
+      ev.initEvent('wheel', true, true);
+      ev.clientX = x;
+      ev.clientY = y;
+      ev.deltaX = deltaX || 0;
+      ev.deltaY = deltaY || 0;
+      return ev;
+    }
+  }
+
+  function getFocusPosOrCenter() {
+    const pos = state.lastMousePos;
+    if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') return { x: pos.x, y: pos.y };
+    const cx = Math.round((document.documentElement.clientWidth || window.innerWidth) / 2);
+    const cy = Math.round((document.documentElement.clientHeight || window.innerHeight) / 2);
+    return { x: cx, y: cy };
+  }
+
+  /* ---------- click-slow-wheel logic (unchanged speed) ---------- */
+  async function loopOnce(x, y) {
+    if (!state.running) return;
+    if (!isVisible(qButton())) { stop('button-gone-before'); return; }
+    const target = document.elementFromPoint(x, y) || document.body;
+    const ev = makeWheel(x, y, 0, state.cfg.deltaPerEvent);
+    try { target.dispatchEvent(ev); } catch (e) {}
+    state.sent += 1;
+    if (!isVisible(qButton())) { stop('button-gone-after'); return; }
+    if (state.cfg.maxEvents !== Infinity && state.sent >= state.cfg.maxEvents) { stop('max-events'); return; }
+  }
+
+  function startAt(x, y) {
+    if (state.running) return;
+    state.running = true;
+    state.sent = 0;
+    state.lastPoint = { x, y };
+    try {
+      const vw = Math.max(document.documentElement.clientWidth || window.innerWidth, 1);
+      const vh = Math.max(document.documentElement.clientHeight || window.innerHeight, 1);
+      const px = Math.max(0, Math.min(x, vw));
+      const py = Math.max(0, Math.min(y, vh));
+      const ox = Math.round((px / vw) * 10000) / 100;
+      const oy = Math.round((py / vh) * 10000) / 100;
+      document.documentElement.style.transformOrigin = ox + '% ' + oy + '%';
+    } catch (e) {}
+    state.observer = new MutationObserver(() => {
+      if (!isVisible(qButton()) && state.running) stop('button-gone-mutation');
+    });
+    try { state.observer.observe(document.documentElement || document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] }); } catch (e) {}
+    state.timerId = setInterval(() => { if (!state.running) return; loopOnce(x, y); }, state.cfg.intervalMs);
+    console.log('slowWheelUntilButtonGone started at', x, y);
+  }
+
+  function stop(reason = 'stopped') {
+    state.running = false;
+    if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+    if (state.observer) { try { state.observer.disconnect(); } catch (e) {} state.observer = null; }
+    stopContinuousZoom();
+    if (state.smoothController) { state.smoothController.cancel(); state.smoothController = null; }
+    console.log('slowWheelUntilButtonGone stopped:', reason, 'eventsSent:', state.sent);
+  }
+
+  /* ---------- click detection: 在单击前立即删除指定通知 section ---------- */
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    state.mouseDownPos = { x: e.clientX, y: e.clientY };
+    state.mouseDownTime = Date.now();
+    state.moved = false;
+  }
+  function onMouseMove(e) {
+    if (!state.mouseDownPos) return;
+    const dx = e.clientX - state.mouseDownPos.x;
+    const dy = e.clientY - state.mouseDownPos.y;
+    if (Math.hypot(dx, dy) > (state.cfg.clickMoveThreshold || 6)) state.moved = true;
+  }
+  function onMouseUp(e) {
+    if (e.button !== 0) { state.mouseDownPos = null; return; }
+    const duration = Date.now() - (state.mouseDownTime || 0);
+    const moved = !!state.moved;
+    state.mouseDownPos = null;
+    state.mouseDownTime = 0;
+    state.moved = false;
+    if (moved) return;
+    if (duration > (state.cfg.clickMaxDurationMs || 500)) return;
+    try {
+      // 1) 先立即移除你指定的通知 section（有多种变体，removeNotificationSectionsFrom 会处理）
+      try { removeNotificationSectionsFrom(document); } catch (err) {}
+      // 2) 再启动单击触发的慢速派发（速度保持原样）
+      startAt(e.clientX, e.clientY);
+    } catch (err) {}
+  }
+  function attachClickListener() {
+    if (state.listenersAttached) return;
+    try {
+      window.__slowWheelUntilButtonGoneOnMouseDown = onMouseDown;
+      window.__slowWheelUntilButtonGoneOnMouseMove = onMouseMove;
+      window.__slowWheelUntilButtonGoneOnMouseUp = onMouseUp;
+      window.addEventListener('mousedown', window.__slowWheelUntilButtonGoneOnMouseDown, !!state.cfg.useCapture);
+      window.addEventListener('mousemove', window.__slowWheelUntilButtonGoneOnMouseMove, !!state.cfg.useCapture);
+      window.addEventListener('mouseup', window.__slowWheelUntilButtonGoneOnMouseUp, !!state.cfg.useCapture);
+      state.listenersAttached = true;
+      console.log('listening for single clicks (drag ignored)');
+    } catch (e) {}
+  }
+  function detachClickListener() {
+    try {
+      window.removeEventListener('mousedown', window.__slowWheelUntilButtonGoneOnMouseDown || onMouseDown, !!state.cfg.useCapture);
+      window.removeEventListener('mousemove', window.__slowWheelUntilButtonGoneOnMouseMove || onMouseMove, !!state.cfg.useCapture);
+      window.removeEventListener('mouseup', window.__slowWheelUntilButtonGoneOnMouseUp || onMouseUp, !!state.cfg.useCapture);
+    } catch (e) {}
+    state.listenersAttached = false;
+  }
+
+  /* ---------- pointer tracking for focus pos ---------- */
+  function onPointerMove(e) {
+    try {
+      if (e.pointerType === 'mouse' || typeof e.pointerType === 'undefined') {
+        state.lastMousePos = { x: e.clientX, y: e.clientY };
+      }
+    } catch (e) {}
+  }
+  function attachPointerTracker() {
+    if (state.pointerListenerAttached) return;
+    try {
+      window.__slowWheelUntilButtonGonePointerMove = onPointerMove;
+      window.addEventListener('pointermove', window.__slowWheelUntilButtonGonePointerMove, true);
+      state.pointerListenerAttached = true;
+    } catch (e) {}
+  }
+  function detachPointerTracker() {
+    try {
+      window.removeEventListener('pointermove', window.__slowWheelUntilButtonGonePointerMove || onPointerMove, true);
+    } catch (e) {}
+    state.pointerListenerAttached = false;
+  }
+
+  /* ---------- remove notification section (robust) ---------- */
+  function removeNotificationSectionsFrom(root) {
+    try {
+      const sel = state.cfg.removeNotificationSelector;
+      if (!sel) return 0;
+      const rootNode = root || document;
+      let list = [];
+      try {
+        list = Array.from(rootNode.querySelectorAll(sel));
+      } catch (e) {
+        // fallback: manual matching for the exact attribute set you provided
+        const nodes = Array.from(rootNode.getElementsByTagName('section'));
+        for (const n of nodes) {
+          try {
+            if (n.getAttribute('aria-label') === 'Notifications alt+T' &&
+                n.getAttribute('aria-live') === 'polite' &&
+                n.getAttribute('aria-relevant') === 'additions text' &&
+                n.getAttribute('aria-atomic') === 'false' &&
+                n.classList.contains('svelte-tppj9g') &&
+                n.getAttribute('tabindex') === '-1') {
+              list.push(n);
+            }
+          } catch (e2) {}
+        }
+      }
+      let removed = 0;
+      for (const el of list) {
+        try { if (el && el.parentNode) { el.parentNode.removeChild(el); removed += 1; } } catch (e) {}
+      }
+      if (removed) console.log('removed notification section(s):', removed);
+      return removed;
+    } catch (e) { return 0; }
+  }
+  function startNotifObserver() {
+    if (state.notifObserver) return;
+    removeNotificationSectionsFrom(document);
+    state.notifObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.addedNodes && m.addedNodes.length) {
+          for (const n of m.addedNodes) {
+            try { if (n.nodeType === 1) removeNotificationSectionsFrom(n); } catch (e) {}
+          }
+        }
+        if (m.type === 'attributes' && m.target) {
+          try { removeNotificationSectionsFrom(m.target); } catch (e) {}
+        }
+      }
+    });
+    try {
+      state.notifObserver.observe(document.documentElement || document.body, {
+        subtree: true, childList: true, attributes: true,
+        attributeFilter: ['class', 'aria-label', 'aria-live', 'aria-relevant', 'aria-atomic', 'tabindex']
+      });
+    } catch (e) {}
+  }
+
+  /* ---------- Smooth single-shot controller (keeps simulateZoom/ simulateShrink) ---------- */
+  function SmoothController() {
+    let rafId = null; let startTime = 0; let duration = 0; let cx = 0, cy = 0; let onFrame = null; let cancelled = false;
+    this.start = function(opts) {
+      if (rafId) this.cancel();
+      startTime = performance.now();
+      duration = Math.max(1, opts.duration || state.cfg.smoothDurationMs);
+      cx = opts.cx; cy = opts.cy; onFrame = opts.onFrame; cancelled = false;
+      const step = (t) => {
+        if (cancelled) return;
+        const elapsed = t - startTime;
+        const p = Math.min(1, elapsed / duration);
+        try { onFrame(p, cx, cy); } catch (e) {}
+        if (p < 1) rafId = requestAnimationFrame(step); else rafId = null;
+      };
+      rafId = requestAnimationFrame(step);
+    };
+    this.cancel = function() { cancelled = true; if (rafId) { try { cancelAnimationFrame(rafId); } catch (e) {} rafId = null; } };
+    this.isRunning = function() { return !!rafId && !cancelled; };
+  }
+
+  function isTypingElement(el) {
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
+  }
+
+  function simulateSmooth(deltaPerTotal, cx, cy, durationMs) {
+    if (state.smoothController) state.smoothController.cancel();
+    state.smoothController = new SmoothController();
+    let prevApplied = 0;
+    state.smoothController.start({
+      duration: durationMs || state.cfg.smoothDurationMs,
+      cx, cy,
+      onFrame: (p, x, y) => {
+        const eased = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+        const targetApplied = deltaPerTotal * eased;
+        const toApply = targetApplied - prevApplied;
+        prevApplied = targetApplied;
+        try {
+          const tx = Math.round(x), ty = Math.round(y);
+          const targetEl = document.elementFromPoint(tx, ty) || document.body;
+          targetEl.dispatchEvent(makeWheel(tx, ty, 0, toApply));
+          state.sent += 1;
+        } catch (e) {}
+      }
+    });
+  }
+
+  function simulateZoomAtSmoothUsingMouse(totalSteps) {
+    const base = state.cfg.deltaPerEvent || -300;
+    const sign = Math.sign(base || -1);
+    const perStep = Math.abs(base) * (state.cfg.zoomDeltaPerEventMultiplier || 1);
+    const totalDelta = sign * perStep * (Number(totalSteps) || Number(state.cfg.zoomCount || 8));
+    const pos = getFocusPosOrCenter();
+    simulateSmooth(totalDelta, pos.x, pos.y, state.cfg.smoothDurationMs);
+  }
+  function simulateShrinkAtSmoothUsingMouse(totalSteps) {
+    const base = state.cfg.deltaPerEvent || -300;
+    const sign = -Math.sign(base || -1);
+    const perStep = Math.abs(base) * (state.cfg.shrinkDeltaPerEventMultiplier || 1);
+    const totalDelta = sign * perStep * (Number(totalSteps) || Number(state.cfg.shrinkCount || 8));
+    const pos = getFocusPosOrCenter();
+    simulateSmooth(totalDelta, pos.x, pos.y, state.cfg.smoothDurationMs);
+  }
+
+  /* ---------- Continuous fixed-rate zoom (RAF time-driven) ---------- */
+  function startContinuousZoom(direction) {
+    // direction: +1 zoom-in, -1 zoom-out
+    stopContinuousZoom();
+    state.continuousZoom.running = true;
+    state.continuousZoom.direction = direction;
+    state.continuousZoom.lastTime = performance.now();
+
+    const cfgPerSec = Number(state.cfg.controlZoomDeltaPerSecond) || 2400;
+    // signed per-second wheel-delta depending on direction
+    const signedPerSec = (direction > 0) ? Math.abs(cfgPerSec) : -Math.abs(cfgPerSec);
+
+    function step(now) {
+      if (!state.continuousZoom.running) { state.continuousZoom.rafId = null; return; }
+      const elapsed = now - state.continuousZoom.lastTime;
+      state.continuousZoom.lastTime = now;
+      const deltaToApply = signedPerSec * (elapsed / 1000);
+      const pos = getFocusPosOrCenter();
+      try {
+        const tx = Math.round(pos.x), ty = Math.round(pos.y);
+        const targetEl = document.elementFromPoint(tx, ty) || document.body;
+        targetEl.dispatchEvent(makeWheel(tx, ty, 0, deltaToApply));
+        state.sent += 1;
+      } catch (e) {}
+      state.continuousZoom.rafId = requestAnimationFrame(step);
+    }
+    state.continuousZoom.rafId = requestAnimationFrame(step);
+  }
+
+  function stopContinuousZoom() {
+    if (state.continuousZoom.rafId) {
+      try { cancelAnimationFrame(state.continuousZoom.rafId); } catch (e) {}
+      state.continuousZoom.rafId = null;
+    }
+    state.continuousZoom.running = false;
+    state.continuousZoom.direction = 0;
+  }
+
+  /* ---------- Key handlers (only Q/E for continuous fixed-rate zoom) ---------- */
+  function onKeyDownHandler(e) {
+    try {
+      if (!e || !e.key) return;
+      const key = e.key.toLowerCase();
+      const active = document.activeElement;
+      if (isTypingElement(active)) return;
+      if (key === (state.cfg.zoomKey || 'q')) {
+        if (!state.continuousZoom.running) startContinuousZoom(+1);
+        e.preventDefault();
+        return;
+      }
+      if (key === (state.cfg.shrinkKey || 'e')) {
+        if (!state.continuousZoom.running) startContinuousZoom(-1);
+        e.preventDefault();
+        return;
+      }
+    } catch (err) {}
+  }
+  function onKeyUpHandler(e) {
+    try {
+      if (!e || !e.key) return;
+      const key = e.key.toLowerCase();
+      if (key === (state.cfg.zoomKey || 'q') || key === (state.cfg.shrinkKey || 'e')) {
+        stopContinuousZoom();
+        e.preventDefault();
+        return;
+      }
+    } catch (err) {}
+  }
+  function attachKeyListener() {
+    try {
+      window.__slowWheelUntilButtonGoneOnKeyDown = onKeyDownHandler;
+      window.__slowWheelUntilButtonGoneOnKeyUp = onKeyUpHandler;
+      window.addEventListener('keydown', window.__slowWheelUntilButtonGoneOnKeyDown, true);
+      window.addEventListener('keyup', window.__slowWheelUntilButtonGoneOnKeyUp, true);
+    } catch (e) {}
+  }
+  function detachKeyListener() {
+    try {
+      window.removeEventListener('keydown', window.__slowWheelUntilButtonGoneOnKeyDown || onKeyDownHandler, true);
+      window.removeEventListener('keyup', window.__slowWheelUntilButtonGoneOnKeyUp || onKeyUpHandler, true);
+    } catch (e) {}
+  }
+
+  /* ---------- Observers for button presence and notification removal ---------- */
+  function startObservingButtonPresence() {
+    if (state.buttonObserver) return;
+    if (isVisible(qButton())) attachClickListener();
+    state.buttonObserver = new MutationObserver(() => {
+      const btn = qButton();
+      if (btn && isVisible(btn)) attachClickListener();
+    });
+    try { state.buttonObserver.observe(document.documentElement || document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] }); } catch (e) {}
+  }
+
+  /* ---------- Public API ---------- */
+  window.__slowWheelUntilButtonGone = {
+    config: state.cfg,
+    isRunning() { return state.running || (state.continuousZoom && state.continuousZoom.running) || (state.smoothController && state.smoothController.isRunning()); },
+    stop() { stop('manual'); },
+    cancel() { stop('cancel'); },
+    simulateAt(x, y, overrides = {}) {
+      Object.assign(state.cfg, overrides);
+      if (state.running) { console.warn('already running'); return; }
+      if (!isVisible(qButton())) { console.log('target not visible'); return; }
+      startAt(Number(x) || 0, Number(y) || 0);
+    },
+    simulateShrink(count, x, y) {
+      const px = (typeof x === 'number') ? x : getFocusPosOrCenter().x;
+      const py = (typeof y === 'number') ? y : getFocusPosOrCenter().y;
+      const c = Number(count || state.cfg.shrinkCount);
+      const base = state.cfg.deltaPerEvent || -300;
+      const sign = -Math.sign(base || -1);
+      const perStep = Math.abs(base) * (state.cfg.shrinkDeltaPerEventMultiplier || 1);
+      const totalDelta = sign * perStep * c;
+      simulateSmooth(totalDelta, px, py, state.cfg.smoothDurationMs);
+    },
+    simulateZoom(count, x, y) {
+      const px = (typeof x === 'number') ? x : getFocusPosOrCenter().x;
+      const py = (typeof y === 'number') ? y : getFocusPosOrCenter().y;
+      const c = Number(count || state.cfg.zoomCount);
+      const base = state.cfg.deltaPerEvent || -300;
+      const sign = Math.sign(base || -1);
+      const perStep = Math.abs(base) * (state.cfg.zoomDeltaPerEventMultiplier || 1);
+      const totalDelta = sign * perStep * c;
+      simulateSmooth(totalDelta, px, py, state.cfg.smoothDurationMs);
+    },
+    startListening() { attachClickListener(); attachKeyListener(); attachPointerTracker(); startNotifObserver(); startObservingButtonPresence(); },
+    destroy() {
+      stop('destroy');
+      detachClickListener();
+      detachKeyListener();
+      detachPointerTracker();
+      try { if (state.buttonObserver) { state.buttonObserver.disconnect(); state.buttonObserver = null; } } catch(e){}
+      try { if (state.notifObserver) { state.notifObserver.disconnect(); state.notifObserver = null; } } catch(e){}
+      try { delete window.__slowWheelUntilButtonGone; } catch(e){}
+      window.__wplace_click_center_zoom_installed = false;
+      console.log('slowWheelUntilButtonGone destroyed');
+    },
+    info() { return { running: state.running, continuousZoom: state.continuousZoom.running, lastMousePos: state.lastMousePos, sent: state.sent, config: state.cfg }; }
+  };
+
+  /* ---------- initialize ---------- */
+  startNotifObserver();
+  startObservingButtonPresence();
+  try { if (isVisible(qButton())) attachClickListener(); } catch (e) {}
+  attachKeyListener();
+  attachPointerTracker();
+
+  console.log('ready: specified notification section removed on click; hold Q/E for fixed-rate zoom (config.controlZoomDeltaPerSecond); single-click slow-zoom unchanged.');
+})();
+
+// --------- final small checks ----------
+try {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(()=>{}).catch(()=>{});
+  }
+} catch (e){}
 })();
