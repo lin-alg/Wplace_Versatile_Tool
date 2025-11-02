@@ -2569,20 +2569,36 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     if (Math.hypot(dx, dy) > (state.cfg.clickMoveThreshold || 6)) state.moved = true;
   }
   function onMouseUp(e) {
-    if (e.button !== 0) { state.mouseDownPos = null; return; }
-    const duration = Date.now() - (state.mouseDownTime || 0);
-    const moved = !!state.moved;
-    state.mouseDownPos = null;
-    state.mouseDownTime = 0;
-    state.moved = false;
-    if (moved) return;
-    if (duration > (state.cfg.clickMaxDurationMs || 500)) return;
+  if (e.button !== 0) { state.mouseDownPos = null; return; }
+  const duration = Date.now() - (state.mouseDownTime || 0);
+  const moved = !!state.moved;
+  state.mouseDownPos = null;
+  state.mouseDownTime = 0;
+  state.moved = false;
+  if (moved) return;
+  if (duration > (state.cfg.clickMaxDurationMs || 500)) return;
+
+  try {
+    // --- 新增：如果点击发生在需要忽略的元素上，则不做任何动作 ---
     try {
-      // 1) 先立即移除你指定的通知 section（有多种变体，removeNotificationSectionsFrom 会处理）
-      try { removeNotificationSectionsFrom(document); } catch (err) {}
-      // 2) 再启动单击触发的慢速派发（速度保持原样）
-      startAt(e.clientX, e.clientY);
-    } catch (err) {}
+      // marker 的完整类选择器（基于你给出的 HTML）
+      const markerSelector = '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center';
+      // 弹窗内的圆形小按钮（关闭按钮）位于 .rounded-t-box 内
+      const popupCloseBtnSelector = '.rounded-t-box button.btn.btn-circle.btn-sm';
+      if (e.target && (e.target.closest && (
+            e.target.closest(markerSelector) ||
+            e.target.closest(popupCloseBtnSelector)
+          ))) {
+        // 点击在需要忽略的元素上：直接返回，不移除通知、不触发慢速滚轮
+        return;
+      }
+    } catch (innerErr) {}
+
+    // 1) 先立即移除你指定的通知 section（有多种变体，removeNotificationSectionsFrom 会处理）
+    try { removeNotificationSectionsFrom(document); } catch (err) {}
+    // 2) 再启动单击触发的慢速派发（速度保持原样）
+    startAt(e.clientX, e.clientY);
+  } catch (err) {}
   }
   function attachClickListener() {
     if (state.listenersAttached) return;
