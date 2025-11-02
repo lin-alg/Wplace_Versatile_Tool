@@ -50,20 +50,20 @@ Wplace_Locator 是一个轻量的悬浮扩展。它可以：
 
 #### 安装（开发 / 调试）
 1. 打开 Chrome或Edge 扩展管理页（chrome://extensions/ 或 edge://extensions/），打开“开发者模式”。  
-![alt text](image-1.png)
+![alt text](./images/image-1.png)
 2. 点击“加载已解压的扩展”，选择本项目的 src 文件夹。 
-![alt text](image.png) 
+![alt text](./images/image.png) 
 3. 打开或刷新 Wplace 网站。
 
 #### 快速使用步骤
 1. 页面右下角或页面上出现悬浮图标，点击打开面板。 
-![alt text](image-2.png) 
+![alt text](./images/image-2.png) 
 2. 单击页面位置，然后点击“分享”。会把最近的四元坐标复制到剪贴板。
-![alt text](image-3.png)  
+![alt text](./images/image-3.png)  
 3. 在面板输入框粘贴四元坐标，用逗号隔开（示例：`180,137,42,699`），点击“跳转”即可。  
-![alt text](image-4.png)
+![alt text](./images/image-4.png)
 4. 扩展会尝试自动把基准坐标填入绘画插件。（Skirk Marble也适用）
-![alt text](image-5.png)
+![alt text](./images/image-5.png)
 5. 点击最小化按钮可以把面板缩为图标，再点击图标可恢复。
 
 ---
