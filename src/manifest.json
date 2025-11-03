@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wplace_Locator",
-  "version": "2.1",
+  "version": "2.2",
   "description": "Floating Wplace locator: share current pixel coords and jump to shared coords",
   "permissions": [
     "scripting",
@@ -13,7 +13,8 @@
   ],
   "host_permissions": [
     "https://backend.wplace.live/*",
-    "https://wplace.live/*"
+    "https://wplace.live/*",
+    "https://maps.wplace.live/*"
   ],
   "background": {
     "service_worker": "service_worker.js"
@@ -39,7 +40,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["wplace_theme_inject.js", "icons/*"],
+      "resources": ["wplace_theme_inject.js", "injected_style_patch.js", "icons/*"],
       "matches": ["https://wplace.live/*"]
     }
   ]

@@ -13,12 +13,12 @@
       copied: "Copied to clipboard:",
       no_share: "No recent share found",
       copy_fail: "Failed to copy to clipboard",
-      minimized_tip: "Click to expand",
+      minimized_tip: "Click to minimize",
       choose_map: "Map style",
       fav_add: "☆",
+      fav_add_2: "Favorite",
       fav_added: "Saved to favorites",
       fav_no_input: "No valid coords to save",
-      fav_manager: "Favorites",
       fav_empty: "No favorites yet",
       fav_rename: "Rename",
       fav_delete: "Delete",
@@ -26,8 +26,7 @@
       fav_jump: "Jump",
       fav_name_placeholder: "Name (optional)",
       fav_saved_label: "Saved",
-      fav_load: "Load",
-      ruler: "Ruler",
+      fav_load: "Favorites",
       ruler_title: "Ruler",
       ruler_pick_start: "Pick Start",
       ruler_pick_end: "Pick End",
@@ -45,7 +44,11 @@
       checking_updates: "Checking...",
       update_available: "New version available:",
       up_to_date: "Up to date",
-      update_fail: "Update check failed"
+      update_fail: "Update check failed",
+      choose_map: "Map style",
+      remove_roads: "Remove roads",
+      remove_names: "Remove place names",
+      save_and_refresh: "Save and refresh"
     },
     zh: {
       title: "Wplace 定位器",
@@ -58,9 +61,9 @@
       minimized_tip: "最小化",
       choose_map: "地图样式",
       fav_add: "☆",
+      fav_add_2: "收藏",
       fav_added: "已加入收藏",
       fav_no_input: "没有可保存的有效坐标",
-      fav_manager: "收藏夹",
       fav_empty: "尚无收藏",
       fav_rename: "重命名",
       fav_delete: "删除",
@@ -68,8 +71,7 @@
       fav_jump: "跳转",
       fav_name_placeholder: "名称（可选）",
       fav_saved_label: "已保存",
-      fav_load: "加载",
-       ruler: "标尺",
+      fav_load: "收藏夹",
       ruler_title: "标尺",
       ruler_pick_start: "拾取 起点",
       ruler_pick_end: "拾取 终点",
@@ -87,7 +89,11 @@
       checking_updates: "检查中…",
       update_available: "发现新版本：",
       up_to_date: "已是最新",
-      update_fail: "检查更新失败"
+      update_fail: "检查更新失败",
+      choose_map: "地图样式",
+      remove_roads: "移除道路",
+      remove_names: "移除地名",
+      save_and_refresh: "保存并刷新页面"
     }
   };
 
@@ -112,11 +118,11 @@
     </div>
     <div id="wplace_body">
       <div style="margin-bottom:8px; display:flex; gap:8px; align-items:center;">
-        <button id="wplace_share" class="wplace_btn">${t("share")}</button>
-        <button id="wplace_jump_btn" class="wplace_btn secondary">${t("jump")}</button>
+        <button id="wplace_share" class="wplace_btn">🔗</button>
+        <button id="wplace_jump_btn" class="wplace_btn secondary">🚀</button>
         <button id="wplace_fav_btn" title="${t("fav_add")}" class="wplace_btn star">${t("fav_add")}</button>
-        <button id="wplace_fav_manager_btn" class="wplace_btn">${t("fav_manager")}</button>
-        <button id="wplace_ruler_btn" class="wplace_btn">${t("ruler")}</button>
+        <button id="wplace_fav_manager_btn" class="wplace_btn">📁</button>
+        <button id="wplace_ruler_btn" class="wplace_btn">📐</button>
         <button id="wplace_check_update" class="wplace_btn">⇪</button>
       </div>
       <input id="wplace_input" type="text" placeholder="${t("placeholder")}" />
@@ -125,9 +131,207 @@
   `;
   document.body.appendChild(root);
   try {
-    root.style.minWidth = '420px';
+    root.style.minWidth = '380px';
     root.style.maxWidth = '92vw';
   } catch (e) {}
+  (function installResizableRoot() {
+  try {
+    const rootEl = document.getElementById('wplace_locator');
+    if (!rootEl) return;
+
+    // 配置
+    const SIZE_KEY = 'wplace_main_panel_size_v1';
+    const POS_KEY = 'wplace_position'; // 你原来可用的 key 仍可兼容
+    const DEFAULT = { width: 380, height: 150 };
+    const MIN = { width: 380, height: 150 };
+    const MAX_PADDING = 16; // 离视窗边缘预留
+
+    // 创建把手
+    if (!document.getElementById('wplace_resize_handle')) {
+      const handle = document.createElement('div');
+      handle.id = 'wplace_resize_handle';
+      Object.assign(handle.style, {
+        position: 'absolute',
+        right: '0px',
+        bottom: '0px',
+        width: '18px',
+        height: '18px',
+        cursor: 'nwse-resize',
+        zIndex: '2147483648',
+        borderRadius: '3px',
+        background: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'auto'
+      });
+      // visual lines
+      handle.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">\
+  <defs>\
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">\
+      <stop offset="0" stop-color="rgba(255,255,255,0.98)"/>\
+      <stop offset="1" stop-color="rgba(255,255,255,0.82)"/>\
+    </linearGradient>\
+  </defs>\
+  <rect x="0.5" y="0.5" width="13" height="13" rx="1" fill="transparent"/>\
+  <polyline points="3.2,10.0 9.2,10.0 9.2,3.6"\
+            stroke="url(#g)"\
+            stroke-width="1.6"\
+            stroke-linecap="butt"\
+            stroke-linejoin="miter"\
+            fill="none" />\
+  <rect x="9.0" y="3.0" width="0.8" height="0.8" fill="rgba(255,255,255,0.94)"/>\
+</svg>';
+      // ensure root is positioned fixed so left/top/width/height work
+      rootEl.style.position = rootEl.style.position || 'fixed';
+      rootEl.style.boxSizing = 'border-box';
+      rootEl.appendChild(handle);
+    }
+
+    const handleEl = document.getElementById('wplace_resize_handle');
+
+    // load persisted size (and clamp)
+    function clampSize(w, h) {
+      const vw = Math.max(200, window.innerWidth - MAX_PADDING);
+      const vh = Math.max(120, window.innerHeight - MAX_PADDING);
+      const W = Math.min(Math.max(Math.round(w), MIN.width), vw);
+      const H = Math.min(Math.max(Math.round(h), MIN.height), vh);
+      return { W, H };
+    }
+
+    async function loadSize() {
+      let size = null;
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) {
+          const res = await new Promise(resolve => chrome.storage.local.get([SIZE_KEY], resolve));
+          if (res && res[SIZE_KEY]) size = res[SIZE_KEY];
+        } else {
+          const raw = localStorage.getItem(SIZE_KEY);
+          if (raw) size = JSON.parse(raw);
+        }
+      } catch (e) { size = null; }
+      if (!size || typeof size.width !== 'number' || typeof size.height !== 'number') {
+        size = DEFAULT;
+      }
+      const clamped = clampSize(size.width, size.height);
+      applySize(clamped.W, clamped.H, { persist: false });
+    }
+
+    function saveSize(w, h) {
+      const obj = { width: Math.round(w), height: Math.round(h) };
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) chrome.storage.local.set({ [SIZE_KEY]: obj });
+        else localStorage.setItem(SIZE_KEY, JSON.stringify(obj));
+      } catch (e) { try { localStorage.setItem(SIZE_KEY, JSON.stringify(obj)); } catch(_) {} }
+    }
+
+    function applySize(w, h, opts = { persist: true }) {
+      try {
+        rootEl.style.width = w + 'px';
+        rootEl.style.height = h + 'px';
+        // ensure maxWidth doesn't exceed viewport
+        rootEl.style.maxWidth = Math.max(200, window.innerWidth - 8) + 'px';
+        if (opts.persist) saveSize(w, h);
+        // clamp position so panel stays in viewport
+        clampPositionIntoView();
+      } catch (e) {}
+    }
+
+    function clampPositionIntoView() {
+      try {
+        const rect = rootEl.getBoundingClientRect();
+        const vw = window.innerWidth, vh = window.innerHeight;
+        let left = rect.left, top = rect.top, w = rect.width, h = rect.height;
+        const padding = 8;
+        if (left + w > vw - padding) left = Math.max(padding, vw - w - padding);
+        if (top + h > vh - padding) top = Math.max(padding, vh - h - padding);
+        if (left < padding) left = padding;
+        if (top < padding) top = padding;
+        rootEl.style.left = Math.round(left) + 'px';
+        rootEl.style.top = Math.round(top) + 'px';
+        // persist pos as your existing logic does
+        try { chrome.storage.local.set({ wplace_position: { left: Math.round(left), top: Math.round(top) } }); } catch (e) { try { localStorage.setItem('wplace_position', JSON.stringify({ left: Math.round(left), top: Math.round(top) })); } catch(_) {} }
+      } catch (e) {}
+    }
+
+    // pointer drag handling
+    let dragging = false;
+    let pointerId = null;
+    let startX = 0, startY = 0, startW = 0, startH = 0;
+
+    function onPointerDown(e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      dragging = true;
+      pointerId = e.pointerId;
+      handleEl.setPointerCapture && handleEl.setPointerCapture(pointerId);
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = rootEl.getBoundingClientRect();
+      startW = rect.width;
+      startH = rect.height;
+      document.body.style.userSelect = 'none';
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp, { passive: false });
+      window.addEventListener('pointercancel', onPointerUp, { passive: false });
+    }
+
+    function onPointerMove(e) {
+      if (!dragging || e.pointerId !== pointerId) return;
+      e.preventDefault();
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newW = startW + dx;
+      const newH = startH + dy;
+      const { W, H } = clampSize(newW, newH);
+      applySize(W, H, { persist: false });
+    }
+
+    function onPointerUp(e) {
+      if (!dragging || e.pointerId !== pointerId) return;
+      dragging = false;
+      handleEl.releasePointerCapture && handleEl.releasePointerCapture(pointerId);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      document.body.style.userSelect = '';
+      // persist final
+      const rect = rootEl.getBoundingClientRect();
+      saveSize(rect.width, rect.height);
+      // ensure still visible
+      clampPositionIntoView();
+    }
+
+    handleEl.addEventListener('pointerdown', onPointerDown, { passive: false });
+
+    // double-click handle to reset to default size
+    handleEl.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      applySize(DEFAULT.width, DEFAULT.height, { persist: true });
+    });
+
+    // ensure panel resizes/clamps on window resize
+    window.addEventListener('resize', () => {
+      try {
+        const rect = rootEl.getBoundingClientRect();
+        const clamped = clampSize(rect.width, rect.height);
+        applySize(clamped.W, clamped.H, { persist: true });
+        clampPositionIntoView();
+      } catch (e) {}
+    });
+
+    // initialize saved size (async)
+    loadSize();
+
+    // small accessibility: increase hit area for handle on touch
+    try {
+      handleEl.style.touchAction = 'none';
+    } catch (e) {}
+
+  } catch (e) {
+    console.warn('installResizableRoot failed', e);
+  }
+})();
 
   const styleId = "wplace_locator_css";
   if (!document.getElementById(styleId)) {
@@ -149,12 +353,106 @@
   const rulerBtn = root.querySelector("#wplace_ruler_btn");
   const checkUpdateBtn = root.querySelector('#wplace_check_update');
 
+  function updateJumpBtnState() {
+    const ok = (function(){ 
+      try {
+        if (!inputEl) return false;
+        const parts = (inputEl.value||'').split(',').map(s=>s.trim()).filter(Boolean);
+        return parts.length === 4 && parts.every(s => !Number.isNaN(Number(s)));
+      } catch(e){ return false; }
+    })();
+    if (!jumpBtn) return;
+    if (ok) {
+      jumpBtn.classList.remove('secondary');
+      jumpBtn.disabled = false;
+      jumpBtn.style.opacity = ''; // optional: 恢复不透明度
+    } else {
+      // 保持视觉为 secondary（灰色）
+      jumpBtn.classList.add('secondary');
+      jumpBtn.disabled = false; // 注意：不必真正禁用，否则 keyboard 无法聚焦；若要彻底禁用可设 true
+      jumpBtn.style.opacity = '0.82'; // optional
+    }
+  }
+
+  (function installButtonTooltips() {
+  try {
+    const map = [
+      { el: shareBtn, key: 'share' },
+      { el: jumpBtn, key: 'jump' },
+      { el: favBtn, key: 'fav_add_2' },
+      { el: favManagerBtn, key: 'fav_load' }, // favorites manager
+      { el: rulerBtn, key: 'ruler_title' },
+      { el: checkUpdateBtn, key: 'check_updates' },
+      { el: minBtn, key: 'minimized_tip' }
+    ];
+
+    // safe setter: set title and aria-label (defensive)
+    function setTooltip(node, text) {
+      if (!node) return;
+      try { node.title = text; } catch (e) {}
+      try { node.setAttribute && node.setAttribute('aria-label', text); } catch (e) {}
+    }
+
+    // initialize
+    for (const item of map) {
+      try {
+        const txt = t(item.key);
+        setTooltip(item.el, txt);
+      } catch (e) {}
+    }
+
+    // special case: map style button if present
+    try {
+      const mbtn = document.getElementById('wplace_map_style_btn');
+      if (mbtn) setTooltip(mbtn, t('choose_map'));
+    } catch (e) {}
+
+    // theme selector: set title
+    try {
+      const themeSel = document.getElementById('wplace_theme_sel');
+      if (themeSel) {
+        try { themeSel.title = t('theme_default'); } catch (e) {}
+      }
+    } catch (e) {}
+
+    // Expose updater so language-change handler can call it
+    window.__wplace_update_button_tooltips = function() {
+      try {
+        for (const item of map) {
+          try {
+            const txt = t(item.key);
+            setTooltip(item.el, txt);
+          } catch (e) {}
+        }
+        try {
+          const mbtn = document.getElementById('wplace_map_style_btn');
+          if (mbtn) setTooltip(mbtn, t('choose_map'));
+        } catch (e) {}
+        try {
+          const themeSel = document.getElementById('wplace_theme_sel');
+          if (themeSel) themeSel.title = t('theme_default');
+        } catch (e) {}
+      } catch (e) {}
+    };
+
+    // call once to be safe
+    try { window.__wplace_update_button_tooltips(); } catch (e) {}
+  } catch (e) {
+    console.warn('installButtonTooltips failed', e);
+  }
+})();
+  if (inputEl) {
+    inputEl.addEventListener('input', updateJumpBtnState);
+    // 立刻运行一次以初始化状态
+    updateJumpBtnState();
+  }
+
   try {
     if (checkUpdateBtn) {
-      checkUpdateBtn.textContent = '⇪';
+      checkUpdateBtn.textContent = '⇧';
       checkUpdateBtn.style.fontSize = '18px';
       checkUpdateBtn.style.lineHeight = '1';
-      checkUpdateBtn.style.padding = '6px 8px';
+      checkUpdateBtn.style.padding = '7px 11px';
       checkUpdateBtn.title = t('check_updates');
       checkUpdateBtn.setAttribute('aria-label', t('check_updates'));
     }
@@ -173,6 +471,436 @@ function showMainToast(msg, timeout=2500) {
     } catch(_) { console.log(msg); }
   }
 }
+
+(function installMapStylePanel() {
+  try {
+    const parentRow = root.querySelector('#wplace_body > div') || root.querySelector('#wplace_controls') || root.querySelector('#wplace_body');
+    if (!parentRow) return;
+
+    const wrap = document.createElement('div');
+    wrap.id = 'wplace_map_style_btn_wrap';
+    wrap.style.display = 'inline-block';
+    wrap.style.verticalAlign = 'middle';
+    wrap.style.marginLeft = '6px';
+    const btn = document.createElement('button');
+    btn.id = 'wplace_map_style_btn';
+    btn.className = 'wplace_btn';
+    btn.textContent = t('choose_map');
+    btn.style.padding = '6px 10px';
+    wrap.appendChild(btn);
+
+    try {
+      if (checkUpdateBtn && checkUpdateBtn.parentElement === parentRow) parentRow.insertBefore(wrap, checkUpdateBtn);
+      else parentRow.appendChild(wrap);
+    } catch (e) { parentRow.appendChild(wrap); }
+
+    const panel = document.createElement('div');
+    panel.id = 'wplace_map_style_panel';
+    Object.assign(panel.style, {
+      position: 'fixed',
+      zIndex: 2147483647,
+      width: '260px',
+      background: 'rgba(12,12,12,0.98)',
+      color: '#e8e8e8',
+      borderRadius: '10px',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+      padding: '8px',
+      display: 'none',
+      flexDirection: 'column',
+      gap: '8px',
+      fontFamily: 'sans-serif'
+    });
+
+    panel.innerHTML = `
+      <div id="wplace_map_style_header" class="drag-handle" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:grab;padding:6px 4px 8px 4px;font-weight:600;">
+        <div>${t('choose_map')}</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button id="wplace_map_style_close" class="wplace_btn small">✕</button>
+        </div>
+      </div>
+      <div id="wplace_map_style_body" style="padding:4px 6px; display:flex;flex-direction:column;gap:10px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="wplace_toggle_strip_roads" />
+          <span id="wplace_label_strip_roads">${t('remove_roads')}</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="wplace_toggle_strip_names" />
+          <span id="wplace_label_strip_names">${t('remove_names')}</span>
+        </label>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;">
+          <button id="wplace_map_style_save" class="wplace_btn small">${t('save_and_refresh')}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    const chkRoads = panel.querySelector('#wplace_toggle_strip_roads');
+    const chkNames = panel.querySelector('#wplace_toggle_strip_names');
+    const closeBtn = panel.querySelector('#wplace_map_style_close');
+    const saveBtn = panel.querySelector('#wplace_map_style_save');
+    const headerHandle = panel.querySelector('.drag-handle');
+
+    const KEY = 'wplace_map_style_cfg_v2';
+    const POS_KEY = 'wplace_map_style_panel_pos_v1';
+
+    (function ensureMapStyleCloseWorks() {
+  try {
+    const panel = document.getElementById('wplace_map_style_panel');
+    if (!panel) return;
+
+    // Remove any same-id elements that are not inside our panel to avoid collisions
+    try {
+      Array.from(document.querySelectorAll('#wplace_map_style_close')).forEach(el => {
+        if (!panel.contains(el)) {
+          try { el.remove(); } catch(_) {}
+        }
+      });
+    } catch(e){}
+
+    // Prefer panel-local button; if not present, create one inside the header actions container
+    let btn = panel.querySelector('#wplace_map_style_close');
+    if (!btn) {
+      const hdrActions = panel.querySelector('.drag-handle > div') || panel.querySelector('.drag-handle') || panel;
+      const wrapper = hdrActions.querySelector('div') || hdrActions;
+      btn = document.createElement('button');
+      try { btn.className = 'wplace_btn small'; } catch(_) {}
+      btn.textContent = '✕';
+      // insert to right-most area
+      try { wrapper.appendChild(btn); } catch(e){ panel.insertBefore(btn, panel.firstChild); }
+    }
+
+    // Make the node robustly unique to panel by removing/avoiding a global id
+    try {
+      // keep accessibility labels but avoid global id collisions
+      if (btn.id === 'wplace_map_style_close') {
+        btn.removeAttribute('id');
+        btn.setAttribute('data-wplace-close', '1');
+      } else if (!btn.getAttribute('data-wplace-close')) {
+        btn.setAttribute('data-wplace-close', '1');
+      }
+      // keep aria/title if present
+      if (!btn.getAttribute('aria-label')) {
+        try { btn.setAttribute('aria-label', 'Close map style'); } catch(_) {}
+      }
+    } catch(e){}
+
+    // Safe handler that hides the panel and prevents interference
+    function safeHide(ev) {
+      try { ev && ev.stopPropagation && ev.stopPropagation(); } catch(_) {}
+      try { ev && ev.preventDefault && ev.preventDefault(); } catch(_) {}
+      try { panel.style.display = 'none'; } catch(_) {}
+    }
+
+    // Install pointerdown and click (capture) to maximize chance of receiving interaction
+    try {
+      if (!btn.__wplace_pointer_installed) {
+        btn.addEventListener('pointerdown', function __wplace_ptrdown(ev){
+          safeHide(ev);
+        }, { capture: true, passive: false });
+        btn.__wplace_pointer_installed = true;
+      }
+    } catch(e){}
+
+    try {
+      if (!btn.__wplace_click_installed) {
+        btn.addEventListener('click', function __wplace_click(ev){
+          safeHide(ev);
+        }, { capture: true, passive: false });
+        btn.__wplace_click_installed = true;
+      }
+    } catch(e){}
+
+    // Global capture-phase guard: if some listener prevents event reaching button,
+    // this capture listener will still see it and close the panel.
+    if (!window.__wplace_map_style_global_capture_installed) {
+    window.__wplace_map_style_global_capture_installed = function(ev) {
+      try {
+        // 获取事件路径，兼容各种浏览器
+        const path = ev.composedPath ? ev.composedPath() : (ev.path || []);
+        // 如果无法拿到路径，退回到 target 判断
+        const nodes = (path && path.length) ? path : [ev.target];
+
+        let clickedInsidePanel = false;
+        let clickedCloseMarker = false;
+
+        for (const n of nodes) {
+          try {
+            if (!n || n.nodeType !== 1) continue;
+            if (n === panel || panel.contains(n)) { clickedInsidePanel = true; break; }
+            if (n.getAttribute && n.getAttribute('data-wplace-close') === '1') { clickedCloseMarker = true; break; }
+          } catch (_) {}
+        }
+
+        // 只在点击**panel 之外**并且不是我们显式标记的关闭控件时才隐藏 panel
+        if (!clickedInsidePanel) {
+          // allow explicit close marker to also close (kept for parity)
+          if (clickedCloseMarker) {
+            try { ev.stopImmediatePropagation && ev.stopImmediatePropagation(); ev.preventDefault && ev.preventDefault(); } catch(_) {}
+          }
+          try { panel.style.display = 'none'; } catch(_) {}
+        }
+      } catch (_) {}
+    };
+    document.addEventListener('click', window.__wplace_map_style_global_capture_installed, true);
+  }
+
+
+    // Monitor for accidental replacement of our button and rebind quickly if needed
+    try {
+      const mo = new MutationObserver(mutations => {
+        for (const m of mutations) {
+          if (m.type === 'childList' && m.removedNodes && m.removedNodes.length) {
+            // if our data-wplace-close button was removed, re-run this function to re-create/rebind
+            for (const r of m.removedNodes) {
+              try {
+                if (r && r.getAttribute && (r.getAttribute('data-wplace-close') === '1' || r.id === 'wplace_map_style_close')) {
+                  // small timeout to let other scripts settle, then rebind
+                  setTimeout(() => { try { ensureMapStyleCloseWorks(); } catch(_) {} }, 30);
+                  return;
+                }
+              } catch(_) {}
+            }
+          }
+        }
+      });
+      mo.observe(panel, { childList: true, subtree: true });
+      // Disconnect observer after a short time to avoid long-lived observers; keep it alive for e.g. 5s
+      setTimeout(() => { try { mo.disconnect(); } catch(_) {} }, 5000);
+    } catch(e){}
+
+    // Ensure panel is clickable
+    try {
+      if (getComputedStyle(panel).pointerEvents === 'none') panel.style.pointerEvents = 'auto';
+      if (!panel.style.zIndex) panel.style.zIndex = String(2147483647);
+    } catch(e){}
+
+  } catch (e) {
+    try { console.warn('ensureMapStyleCloseWorks failed', e); } catch(_) {}
+  }
+})();
+
+    async function loadState() {
+      let state = { stripRoads: true, stripNames: true };
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) {
+          const res = await new Promise(resolve => chrome.storage.local.get([KEY], resolve));
+          if (res && res[KEY]) state = Object.assign(state, res[KEY]);
+        } else {
+          const raw = localStorage.getItem(KEY);
+          if (raw) state = Object.assign(state, JSON.parse(raw));
+        }
+      } catch (e) {
+        try { const raw = localStorage.getItem(KEY); if (raw) state = Object.assign(state, JSON.parse(raw)); } catch(_) {}
+      }
+      chkRoads.checked = !!state.stripRoads;
+      chkNames.checked = !!state.stripNames;
+      postConfigToPage(state);
+    }
+
+    function saveState(state) {
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ [KEY]: state });
+        } else {
+          localStorage.setItem(KEY, JSON.stringify(state));
+        }
+      } catch (e) {
+        try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(_) {}
+      }
+    }
+
+    function postConfigToPage(cfg) {
+      try {
+        window.postMessage(Object.assign({ __wplace_style_patch: 'SET_CONFIG' }, cfg), '*');
+      } catch (e) {}
+    }
+
+    function showPanel() {
+      panel.style.display = 'flex';
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get([POS_KEY], res => {
+            const p = res && res[POS_KEY];
+            if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+              panel.style.left = p.left + 'px'; panel.style.top = p.top + 'px'; panel.style.right = 'auto'; panel.style.bottom = 'auto';
+            } else {
+              const rect = btn.getBoundingClientRect();
+              panel.style.left = Math.max(8, Math.round(rect.left)) + 'px';
+              panel.style.top = Math.min(window.innerHeight - 120, Math.round(rect.bottom + 8)) + 'px';
+            }
+          });
+        } else {
+          const raw = localStorage.getItem(POS_KEY);
+          if (raw) {
+            const p = JSON.parse(raw);
+            if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+              panel.style.left = p.left + 'px'; panel.style.top = p.top + 'px'; panel.style.right = 'auto'; panel.style.bottom = 'auto';
+            } else {
+              const rect = btn.getBoundingClientRect();
+              panel.style.left = Math.max(8, Math.round(rect.left)) + 'px';
+              panel.style.top = Math.min(window.innerHeight - 120, Math.round(rect.bottom + 8)) + 'px';
+            }
+          } else {
+            const rect = btn.getBoundingClientRect();
+            panel.style.left = Math.max(8, Math.round(rect.left)) + 'px';
+            panel.style.top = Math.min(window.innerHeight - 120, Math.round(rect.bottom + 8)) + 'px';
+          }
+        }
+      } catch (e) {}
+    }
+    function hidePanel() { panel.style.display = 'none'; }
+
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (panel.style.display === 'none' || panel.style.display === '') {
+        loadState(); showPanel();
+      } else hidePanel();
+    });
+
+    closeBtn.addEventListener('click', () => { hidePanel(); });
+
+    saveBtn.addEventListener('click', () => {
+      const cfg = { stripRoads: !!chkRoads.checked, stripNames: !!chkNames.checked };
+      saveState(cfg);
+      postConfigToPage(cfg);
+      try { showToast && showToast(t('fav_saved_label') || 'Saved'); } catch (e) {}
+      setTimeout(() => {
+        try { location.reload(); } catch (e) { try { top.location.reload(); } catch (_) {} }
+      }, 200);
+    });
+
+    document.addEventListener('click', (ev) => {
+    try {
+      const target = ev.target;
+      // 忽略任何在地图样式 panel 或其按钮上的点击
+      if (panel && panel.contains(target)) return;
+      if (wrap && wrap.contains(target)) return;
+      // 忽略点击主面板（wplace_locator）及其子元素
+      const mainRoot = document.getElementById('wplace_locator');
+      if (mainRoot && mainRoot.contains(target)) return;
+      // 其余情况才关闭
+      hidePanel();
+    } catch (e) {
+      // 如果出现异常，保守起见不自动关闭
+    }
+  }, true);
+
+    (function makeDraggable(el, handle){
+      const padding = 6;
+      let dragging = false, pointerId = null, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+      if (!handle) handle = el;
+      handle.style.cursor = 'grab';
+      handle.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault();
+        dragging = true;
+        pointerId = e.pointerId;
+        handle.setPointerCapture && handle.setPointerCapture(pointerId);
+        startX = e.clientX; startY = e.clientY;
+        const rect = el.getBoundingClientRect();
+        startLeft = rect.left; startTop = rect.top;
+        document.body.style.userSelect = 'none';
+        window.addEventListener('pointermove', onMove, { passive:false });
+        window.addEventListener('pointerup', onUp, { passive:false });
+        window.addEventListener('pointercancel', onUp, { passive:false });
+        handle.style.cursor = 'grabbing';
+      });
+      function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+      function onMove(e) {
+        if (!dragging || e.pointerId !== pointerId) return;
+        e.preventDefault();
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        let L = Math.round(startLeft + dx), T = Math.round(startTop + dy);
+        L = clamp(L, padding, Math.max(padding, vw - w - padding));
+        T = clamp(T, padding, Math.max(padding, vh - h - padding));
+        el.style.left = L + 'px'; el.style.top = T + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto';
+      }
+      function onUp(e) {
+        if (!dragging || e.pointerId !== pointerId) return;
+        dragging = false;
+        handle.releasePointerCapture && handle.releasePointerCapture(pointerId);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        handle.style.cursor = 'grab';
+        document.body.style.userSelect = '';
+        try {
+          const rect = el.getBoundingClientRect();
+          const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+          if (chrome && chrome.storage && chrome.storage.local) chrome.storage.local.set({ [POS_KEY]: pos });
+          else localStorage.setItem(POS_KEY, JSON.stringify(pos));
+        } catch (e) {}
+      }
+      el.style.position = 'fixed';
+    })(panel, headerHandle);
+
+    (async function init() {
+      try { await loadState(); } catch (e) {}
+    })();
+
+  } catch (e) {
+    console.warn('installMapStylePanel failed', e);
+  }
+})();
+
+function updateMapStyleI18n() {
+  try {
+    // 主按钮（显示一个地图图标）
+    const mainBtn = document.getElementById('wplace_map_style_btn');
+    if (mainBtn) mainBtn.textContent = "🗺️";
+
+    // Panel title
+    const headerTitle = document.querySelector('#wplace_map_style_panel .drag-handle > div');
+    if (headerTitle) headerTitle.textContent = t('choose_map');
+
+    // Labels
+    const labelRoads = document.getElementById('wplace_label_strip_roads');
+    if (labelRoads) labelRoads.textContent = t('remove_roads');
+
+    const labelNames = document.getElementById('wplace_label_strip_names');
+    if (labelNames) labelNames.textContent = t('remove_names');
+
+    // Save button
+    const saveBtn = document.getElementById('wplace_map_style_save');
+    if (saveBtn) saveBtn.textContent = t('save_and_refresh');
+
+    // Close button attributes only — 不在这里重新绑定点击事件以避免引用不存在的 hidePanel
+    const closeBtn = document.getElementById('wplace_map_style_close');
+    if (closeBtn) {
+      try {
+        closeBtn.setAttribute('aria-label', t('choose_map'));
+        closeBtn.title = t('choose_map');
+      } catch (e) {}
+      // 安全回退：如果没有原先的关闭绑定，则提供一个本地安全 handler（不依赖外部 hidePanel）
+      // 但仅在没有已有 click listener（或已经存在但不可用）时才添加，避免覆盖原有逻辑。
+      // 我们用 a flag 来避免重复添加。
+      try {
+        if (!closeBtn.__wplace_close_installed) {
+          closeBtn.addEventListener('click', (ev) => {
+            try {
+              ev.stopPropagation();
+            } catch (e) {}
+            try {
+              const panel = document.getElementById('wplace_map_style_panel');
+              if (panel) panel.style.display = 'none';
+            } catch (e) {}
+          });
+          closeBtn.__wplace_close_installed = true;
+        }
+      } catch (e) {}
+    }
+  } catch (e) { /* ignore */ }
+}
+
+try { updateMapStyleI18n(); } catch (e) {}
+
+// 调用点 B: 在语言切换处理器中确保调用（在 langSel.addEventListener('change', ...) 的末尾加入）
+try {
+  // 如果你的已有 handler 已有多处更新调用，把下面这一行加入到最后：
+  updateMapStyleI18n();
+} catch (e) {};
 
 // 尝试读取本地版本
 async function getLocalVersionMain() {
@@ -525,7 +1253,6 @@ async function checkForUpdatesMain() {
   try {
     checkUpdateBtn.disabled = true;
     const prev = checkUpdateBtn.textContent;
-    try { checkUpdateBtn.textContent = t('checking_updates'); } catch (e) {}
     showMainToast(t('checking_updates'));
 
     const [localRaw, gh] = await Promise.all([getLocalVersionMain(), fetchLatestReleaseMain().catch(()=>null)]);
@@ -536,7 +1263,7 @@ async function checkForUpdatesMain() {
 
     // If both normalized values exist and are exactly equal -> show up-to-date
     if (localNorm && remoteNorm && localNorm === remoteNorm) {
-      showMainToast(`${t('up_to_date')}: ${normalizeForDisplay(localNorm)}`);
+      showMainToast(`${t('up_to_date')}: v${normalizeForDisplay(localNorm)}`);
       try { checkUpdateBtn.textContent = prev; checkUpdateBtn.disabled = false; } catch(e){}
       return;
     }
@@ -574,7 +1301,7 @@ async function checkForUpdatesMain() {
         try { window.open((gh && gh.html_url) || 'https://github.com/lin-alg/Wplace_Locator/releases', '_blank'); } catch(_) {}
       }
     } else {
-      showMainToast(`${t('up_to_date')}: ${normalizeForDisplay(localRaw || localNorm)}`);
+      showMainToast(`${t('up_to_date')}: v${normalizeForDisplay(localRaw || localNorm)}`);
     }
 
     try { checkUpdateBtn.textContent = prev; checkUpdateBtn.disabled = false; } catch(e){}
@@ -595,21 +1322,20 @@ try {
   }
 } catch(e){}
   langSel.value = lang;
-// 更全面且稳健的语言切换处理器（替换原有的 change handler）
-langSel.addEventListener("change", () => {
+  // 更全面且稳健的语言切换处理器（替换原有的 change handler）
+  langSel.addEventListener("change", () => {
   lang = langSel.value;
   try { localStorage.setItem("wplace_lang", lang); } catch (e) {}
 
+  try {
+  if (typeof window.__wplace_update_button_tooltips === 'function') {
+    window.__wplace_update_button_tooltips();
+  }
+  } catch (e) {}
   // 更新主面板静态文本
   try {
     const titleEl = root.querySelector("#wplace_title");
     if (titleEl) titleEl.textContent = t("title");
-
-    const shareBtnEl = root.querySelector("#wplace_share");
-    if (shareBtnEl) shareBtnEl.textContent = t("share");
-
-    const jumpBtnEl = root.querySelector("#wplace_jump_btn");
-    if (jumpBtnEl) jumpBtnEl.textContent = t("jump");
 
     const inputElLocal = root.querySelector("#wplace_input");
     if (inputElLocal) inputElLocal.placeholder = t("placeholder");
@@ -620,11 +1346,8 @@ langSel.addEventListener("change", () => {
     const favBtnLocal = root.querySelector("#wplace_fav_btn");
     if (favBtnLocal) favBtnLocal.title = t("fav_add");
 
-    const favMgrBtnLocal = root.querySelector("#wplace_fav_manager_btn");
-    if (favMgrBtnLocal) favMgrBtnLocal.textContent = t("fav_manager");
-
-    const rulerBtnLocal = root.querySelector("#wplace_ruler_btn");
-    if (rulerBtnLocal) rulerBtnLocal.textContent = t("ruler");
+    const favBtnLocal_2 = root.querySelector("#wplace_fav_btn");
+    if (favBtnLocal) favBtnLocal.title = t("fav_add_2");
   } catch (e) {}
 
   // 尝试调用已存在的面板 i18n 更新函数；若不存在则做回退 DOM 更新
@@ -662,7 +1385,9 @@ langSel.addEventListener("change", () => {
       } catch (e2) {}
     }
   } catch (e) {}
-
+  try {
+    updateMapStyleI18n();
+  } catch (e) {};
   // 如果收藏管理器有 refresh API，调用一次以确保内部也更新
   try {
     if (window.__wplace_fav_manager && typeof window.__wplace_fav_manager.refresh === 'function') {
@@ -861,116 +1586,156 @@ langSel.addEventListener("change", () => {
 
   // --------- Stable draggable for panel ----------
   function installStableDraggable(rootEl, opts = {}) {
-    const snapThreshold = typeof opts.snapThreshold === 'number' ? opts.snapThreshold : 6;
-    const padding = typeof opts.padding === 'number' ? opts.padding : 8;
-    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-    function ensureLeftTop() {
-      const rect = rootEl.getBoundingClientRect();
-      rootEl.style.position = 'fixed';
-      rootEl.style.left = Math.round(rect.left) + 'px';
-      rootEl.style.top = Math.round(rect.top) + 'px';
-      rootEl.style.right = 'auto';
-      rootEl.style.bottom = 'auto';
-    }
+  const snapThreshold = typeof opts.snapThreshold === 'number' ? opts.snapThreshold : 6;
+  // 最少可见边缘（确保用户能拖回）
+  const MIN_VISIBLE = typeof opts.minVisible === 'number' ? opts.minVisible : 40;
+  const padding = typeof opts.padding === 'number' ? opts.padding : 8;
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function ensureLeftTop() {
+    const rect = rootEl.getBoundingClientRect();
+    rootEl.style.position = 'fixed';
+    // 保持数值为整数，避免子像素抖动
+    rootEl.style.left = Math.round(rect.left) + 'px';
+    rootEl.style.top = Math.round(rect.top) + 'px';
+    rootEl.style.right = 'auto';
+    rootEl.style.bottom = 'auto';
+  }
+  ensureLeftTop();
+
+  let dragging = false;
+  let startPointerX = 0, startPointerY = 0, startLeft = 0, startTop = 0, pointerId = null;
+
+  // 使用主面板顶部 header 作为把手，回退到 .drag-handle 或 root 本身
+  let handle = null;
+  try {
+    handle = rootEl.querySelector('#wplace_header') || rootEl.querySelector('.drag-handle') || rootEl;
+  } catch (e) {
+    handle = rootEl;
+  }
+
+  // 指向 header 上的控制区（右侧最小化/语言/主题切换），拖拽时需要忽略这些控件
+  let headerControls = null;
+  try {
+    headerControls = rootEl.querySelector('#wplace_controls') || rootEl.querySelector('.wplace_header_controls') || rootEl.querySelector('.controls') || null;
+  } catch (e) {
+    headerControls = null;
+  }
+
+  // 更友好的光标
+  try { handle.style.cursor = 'grab'; } catch (e) {}
+
+  function onPointerDown(e) {
+    // 如果点击在 headerControls 上，不启动拖拽（保留控件原生交互）
+    try { if (headerControls && headerControls.contains(e.target)) return; } catch(_) {}
+
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
     ensureLeftTop();
+    dragging = true;
+    pointerId = e.pointerId;
+    try { handle.setPointerCapture && handle.setPointerCapture(pointerId); } catch (e) {}
+    startPointerX = e.clientX; startPointerY = e.clientY;
+    const rect = rootEl.getBoundingClientRect();
+    startLeft = rect.left; startTop = rect.top;
+    document.body.style.userSelect = 'none';
+    document.body.style.touchAction = 'none';
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp, { passive: false });
+    window.addEventListener('pointercancel', onPointerUp, { passive: false });
+    try { handle.style.cursor = 'grabbing'; } catch (e) {}
+  }
 
-    let dragging = false;
-    let startPointerX = 0, startPointerY = 0, startLeft = 0, startTop = 0, pointerId = null;
-    const handle = rootEl.querySelector(' .drag-handle') || rootEl;
+  function onPointerMove(e) {
+    if (!dragging || e.pointerId !== pointerId) return;
+    e.preventDefault();
+    const dx = e.clientX - startPointerX;
+    const dy = e.clientY - startPointerY;
+    let targetLeft = startLeft + dx;
+    let targetTop = startTop + dy;
 
-    function onPointerDown(e) {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      e.preventDefault();
-      ensureLeftTop();
-      dragging = true;
-      pointerId = e.pointerId;
-      handle.setPointerCapture && handle.setPointerCapture(pointerId);
-      startPointerX = e.clientX; startPointerY = e.clientY;
-      const rect = rootEl.getBoundingClientRect();
-      startLeft = rect.left; startTop = rect.top;
-      document.body.style.userSelect = 'none';
-      document.body.style.touchAction = 'none';
-      window.addEventListener('pointermove', onPointerMove, { passive: false });
-      window.addEventListener('pointerup', onPointerUp, { passive: false });
-      window.addEventListener('pointercancel', onPointerUp, { passive: false });
-    }
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const rect = rootEl.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
 
-    function onPointerMove(e) {
-      if (!dragging || e.pointerId !== pointerId) return;
-      e.preventDefault();
-      const dx = e.clientX - startPointerX;
-      const dy = e.clientY - startPointerY;
-      let targetLeft = startLeft + dx;
-      let targetTop = startTop + dy;
+    // 允许部分隐藏出屏，但保留 MIN_VISIBLE px 在视窗内
+    const minLeft = -(w - MIN_VISIBLE);
+    const maxLeft = Math.max(MIN_VISIBLE, vw - MIN_VISIBLE);
+    const minTop = -(h - MIN_VISIBLE);
+    const maxTop = Math.max(MIN_VISIBLE, vh - MIN_VISIBLE);
 
-      const vw = window.innerWidth, vh = window.innerHeight;
-      const rect = rootEl.getBoundingClientRect();
-      const w = rect.width, h = rect.height;
-      const minLeft = padding;
-      const minTop = padding;
-      const maxLeft = Math.max(padding, vw - w - padding);
-      const maxTop = Math.max(padding, vh - h - padding);
+    targetLeft = clamp(Math.round(targetLeft), minLeft, maxLeft);
+    targetTop = clamp(Math.round(targetTop), minTop, maxTop);
 
-      targetLeft = clamp(Math.round(targetLeft), minLeft, maxLeft);
-      targetTop = clamp(Math.round(targetTop), minTop, maxTop);
-
-      if (snapThreshold > 0) {
-        if (Math.abs(dx) <= snapThreshold && Math.abs(dy) <= snapThreshold) {
-        } else {
-          rootEl.style.left = targetLeft + 'px';
-          rootEl.style.top = targetTop + 'px';
-        }
+    if (snapThreshold > 0) {
+      if (Math.abs(dx) <= snapThreshold && Math.abs(dy) <= snapThreshold) {
+        // 小幅移动时不立即应用（避免误触）
       } else {
         rootEl.style.left = targetLeft + 'px';
         rootEl.style.top = targetTop + 'px';
       }
-    }
-
-    function onPointerUp(e) {
-      if (!dragging || e.pointerId !== pointerId) return;
-      dragging = false;
-      handle.releasePointerCapture && handle.releasePointerCapture(pointerId);
-      pointerId = null;
-      document.body.style.userSelect = '';
-      document.body.style.touchAction = '';
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerUp);
-      try {
-        const rect = rootEl.getBoundingClientRect();
-        const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
-        try { chrome.storage.local.set({ wplace_position: pos }); } catch(e){ localStorage.setItem('wplace_position', JSON.stringify(pos)); }
-      } catch (e) {}
-    }
-
-    handle.addEventListener('pointerdown', onPointerDown, { passive: false });
-
-    function destroy() {
-      handle.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerUp);
-    }
-
-    function setPosition(x, y) {
-      const vw = window.innerWidth, vh = window.innerHeight;
-      const rect = rootEl.getBoundingClientRect();
-      const w = rect.width, h = rect.height;
-      const targetLeft = clamp(Math.round(x), padding, Math.max(padding, vw - w - padding));
-      const targetTop = clamp(Math.round(y), padding, Math.max(padding, vh - h - padding));
+    } else {
       rootEl.style.left = targetLeft + 'px';
       rootEl.style.top = targetTop + 'px';
     }
+  }
 
-    window.__wplace_rebind_draggable = function(reRoot){
-      try {
-        if (reRoot && reRoot.__draggable && typeof reRoot.__draggable.destroy === 'function') reRoot.__draggable.destroy();
-      } catch(e){}
-      const api = installStableDraggable(reRoot || rootEl, opts);
-      return api;
-    };
+  function onPointerUp(e) {
+    if (!dragging || e.pointerId !== pointerId) return;
+    dragging = false;
+    try { handle.releasePointerCapture && handle.releasePointerCapture(pointerId); } catch (e) {}
+    pointerId = null;
+    document.body.style.userSelect = '';
+    document.body.style.touchAction = '';
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerUp);
+    try { handle.style.cursor = 'grab'; } catch (e) {}
 
     try {
+      const rect = rootEl.getBoundingClientRect();
+      const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+      // 持久化位置（兼容 chrome.storage 和 localStorage）
+      try { if (chrome && chrome.storage && chrome.storage.local) chrome.storage.local.set({ wplace_position: pos }); else localStorage.setItem('wplace_position', JSON.stringify(pos)); } catch (e) { try { localStorage.setItem('wplace_position', JSON.stringify(pos)); } catch(_) {} }
+    } catch (e) {}
+  }
+
+  try { handle.addEventListener('pointerdown', onPointerDown, { passive: false }); } catch (e) { rootEl.addEventListener && rootEl.addEventListener('pointerdown', onPointerDown, { passive: false }); }
+
+  function destroy() {
+    try { handle.removeEventListener('pointerdown', onPointerDown); } catch (e) {}
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerUp);
+  }
+
+  function setPosition(x, y) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const rect = rootEl.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const minLeft = -(w - MIN_VISIBLE);
+    const maxLeft = Math.max(MIN_VISIBLE, vw - MIN_VISIBLE);
+    const minTop = -(h - MIN_VISIBLE);
+    const maxTop = Math.max(MIN_VISIBLE, vh - MIN_VISIBLE);
+    const targetLeft = clamp(Math.round(x), minLeft, maxLeft);
+    const targetTop = clamp(Math.round(y), minTop, maxTop);
+    rootEl.style.left = targetLeft + 'px';
+    rootEl.style.top = targetTop + 'px';
+  }
+
+  // 暴露重绑定 API
+  window.__wplace_rebind_draggable = function(reRoot){
+    try {
+      if (reRoot && reRoot.__draggable && typeof reRoot.__draggable.destroy === 'function') reRoot.__draggable.destroy();
+    } catch(e){}
+    const api = installStableDraggable(reRoot || rootEl, opts);
+    return api;
+  };
+
+  // 尝试恢复之前保存的位置（保持兼容）
+  try {
+    if (chrome && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get(['wplace_position'], (res) => {
         const pos = res && res.wplace_position;
         if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') setPosition(pos.left, pos.top);
@@ -984,29 +1749,45 @@ langSel.addEventListener("change", () => {
           }
         }
       });
-    } catch(e){
-      try {
-        const raw = localStorage.getItem('wplace_position');
-        if (raw) {
+    } else {
+      const raw = localStorage.getItem('wplace_position');
+      if (raw) {
+        try {
           const p = JSON.parse(raw);
           if (p && typeof p.left === 'number' && typeof p.top === 'number') setPosition(p.left, p.top);
-        }
-      } catch(e){}
+        } catch(e){}
+      }
     }
+  } catch(e){
+    try {
+      const raw = localStorage.getItem('wplace_position');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p && typeof p.left === 'number' && typeof p.top === 'number') setPosition(p.left, p.top);
+      }
+    } catch(e){}
+  }
 
-    window.addEventListener('resize', () => {
+  // 窗口 resize 时确保最少可见部分仍然可见
+  window.addEventListener('resize', () => {
+    try {
       const rect = rootEl.getBoundingClientRect();
       const vw = window.innerWidth, vh = window.innerHeight;
-      const x = clamp(rect.left, padding, Math.max(padding, vw - rect.width - padding));
-      const y = clamp(rect.top, padding, Math.max(padding, vh - rect.height - padding));
+      const minLeft = -(rect.width - MIN_VISIBLE);
+      const maxLeft = Math.max(MIN_VISIBLE, vw - MIN_VISIBLE);
+      const minTop = -(rect.height - MIN_VISIBLE);
+      const maxTop = Math.max(MIN_VISIBLE, vh - MIN_VISIBLE);
+      const x = clamp(rect.left, minLeft, maxLeft);
+      const y = clamp(rect.top, minTop, maxTop);
       rootEl.style.left = x + 'px';
       rootEl.style.top = y + 'px';
-    });
+    } catch(e){}
+  });
 
-    const api = { destroy, setPosition };
-    rootEl.__draggable = api;
-    return api;
-  }
+  const api = { destroy, setPosition };
+  rootEl.__draggable = api;
+  return api;
+}
 
   const draggableApi = installStableDraggable(root, { snapThreshold: 6, padding: 8 });
 
@@ -1648,7 +2429,7 @@ langSel.addEventListener("change", () => {
 
       sel = document.createElement('select');
       sel.id = 'wplace_theme_sel';
-      sel.title = '切换主题';
+      sel.title = 'Change theme|切换主题';
       sel.style.padding = '4px 6px';
       sel.style.borderRadius = '6px';
       sel.style.background = 'rgba(255,255,255,0.03)';
@@ -1801,7 +2582,7 @@ langSel.addEventListener("change", () => {
 
   m.innerHTML = `
     <div id="wplace_fav_header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <div class="drag-handle" style="font-weight:600;">${t("fav_manager")}</div>
+      <div class="drag-handle" style="font-weight:600;">📁</div>
       <div style="display:flex;gap:6px;align-items:center;">
         <button id="wplace_fav_close" class="wplace_btn small">✕</button>
       </div>
@@ -2589,7 +3370,6 @@ langSel.addEventListener("change", () => {
 
 
   // 全局 click 委托：点击落在地图容器或其子元素时触发
-  // 全局 click 委托：点击落在地图容器或其子元素时触发（延迟 1 秒再去拉取并填充）
 document.addEventListener('click', (ev) => {
   try {
     const path = ev.composedPath ? ev.composedPath() : (ev.path || []);

@@ -27,8 +27,33 @@ chrome.webRequest.onCompleted.addListener(
 );
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg && msg.type === "WPLACE_GET_LATEST") {
+  if (!msg || !msg.type) return;
+  if (msg.type === "WPLACE_GET_LATEST") {
     sendResponse({ coords: latestFourCoords, url: latestMatchingUrl });
+    return true;
   }
+
+  if (msg.type === "WPLACE_TRIGGER_FETCH") {
+    // Minimal async handling: if we have a last-seen matching URL, try to re-fetch it
+    // to ensure backend activity and to refresh any info. If not available, return current state.
+    (async () => {
+      try {
+        if (latestMatchingUrl) {
+          try {
+            // attempt a fetch to prompt backend; we don't rely on its body
+            await fetch(latestMatchingUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' }).catch(()=>null);
+          } catch (e) {
+            // ignore fetch errors
+          }
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        sendResponse({ coords: latestFourCoords, url: latestMatchingUrl });
+      }
+    })();
+    return true; // will respond asynchronously
+  }
+
   return true;
 });
