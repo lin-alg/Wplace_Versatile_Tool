@@ -759,15 +759,93 @@ function showMainToast(msg, timeout=2500) {
 
     closeBtn.addEventListener('click', () => { hidePanel(); });
 
-    saveBtn.addEventListener('click', () => {
-      const cfg = { stripRoads: !!chkRoads.checked, stripNames: !!chkNames.checked };
-      saveState(cfg);
-      postConfigToPage(cfg);
-      try { showToast && showToast(t('fav_saved_label') || 'Saved'); } catch (e) {}
-      setTimeout(() => {
-        try { location.reload(); } catch (e) { try { top.location.reload(); } catch (_) {} }
-      }, 200);
+    // Replace existing saveBtn click handler with this block
+saveBtn.addEventListener('click', () => {
+  // 读取当前面板设置
+  const cfg = { stripRoads: !!chkRoads.checked, stripNames: !!chkNames.checked };
+
+  // Persist cfg (prefer chrome.storage.local, fallback localStorage)
+  try {
+    if (window.chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ wplace_map_style_cfg_v2: cfg });
+    } else {
+      localStorage.setItem('wplace_map_style_cfg_v2', JSON.stringify(cfg));
+    }
+  } catch (e) { try { localStorage.setItem('wplace_map_style_cfg_v2', JSON.stringify(cfg)); } catch(_) {} }
+
+  // Read main input and persist pending coords if valid 4-values
+  try {
+    const pending = (inputEl && inputEl.value) ? String(inputEl.value).trim() : '';
+    const isValidCoords = pending.split(',').map(s => s.trim()).filter(Boolean).length === 4;
+    if (isValidCoords) {
+      if (window.chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ wplace_pending_coords: pending });
+      } else {
+        localStorage.setItem('wplace_pending_coords', pending);
+      }
+    } else {
+      if (window.chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.remove(['wplace_pending_coords']);
+      } else {
+        localStorage.removeItem('wplace_pending_coords');
+      }
+    }
+  } catch (e) {}
+
+  // Decide whether to enable input-intercept based on whether inputEl is focused
+  try {
+    const inputIsFocused = (document.activeElement === inputEl);
+    const key = 'wplace_input_intercept_enabled_v1';
+    try {
+      if (window.chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ [key]: !!inputIsFocused });
+      } else {
+        localStorage.setItem(key, !!inputIsFocused ? '1' : '0');
+      }
+    } catch (e) {
+      try { localStorage.setItem(key, !!inputIsFocused ? '1' : '0'); } catch(_) {}
+    }
+    // also expose as global for immediate-check by in-page logic (no reload)
+    try { window.__wplace_input_intercept_enabled = !!inputIsFocused; } catch (e) {}
+  } catch (e) {}
+
+  // Notify page-context of config change
+  try {
+    window.postMessage(Object.assign({ __wplace_style_patch: 'SET_CONFIG' }, cfg), '*');
+    window.postMessage({ __wplace_style_patch: 'CONFIG_UPDATED', config: cfg }, '*');
+  } catch (e) {}
+
+  // Preheat style.json for configured prefixes (or defaults) to reduce stale-cache risk
+  try {
+    const prefixes = (window.__WPLACE_STYLE_PATCH_CONFIG && Array.isArray(window.__WPLACE_STYLE_PATCH_CONFIG.targetPrefixes))
+      ? window.__WPLACE_STYLE_PATCH_CONFIG.targetPrefixes.slice()
+      : (window.__WPLACE_STYLE_PATCH_CONFIG && typeof window.__WPLACE_STYLE_PATCH_CONFIG.targetPrefix === 'string')
+        ? [window.__WPLACE_STYLE_PATCH_CONFIG.targetPrefix]
+        : ['https://maps.wplace.live/styles/liberty', 'https://maps.wplace.live/styles/fiord'];
+
+    prefixes.forEach(p => {
+      try {
+        let url = p;
+        if (!/\/style\.json($|\?)/i.test(url)) url = url.replace(/\/$/, '') + '/style.json';
+        const U = new URL(url, location.href);
+        U.searchParams.set('_wplace_bust', Date.now().toString(36));
+        fetch(U.toString(), { cache: 'no-store', credentials: 'same-origin' }).catch(()=>{});
+      } catch (_) {}
     });
+  } catch (e) {}
+
+  // UX toast then short-delay reload w/ cache-bust (replace to avoid history entry)
+  try { showToast && showToast(t('fav_saved_label') || 'Saved'); } catch (e) {}
+  setTimeout(() => {
+    try {
+      const u = new URL(location.href);
+      u.searchParams.set('_wplace_reload', Date.now().toString(36));
+      location.replace(u.toString());
+    } catch (e) {
+      try { location.reload(true); } catch(_) { location.reload(); }
+    }
+  }, 180);
+});
 
     document.addEventListener('click', (ev) => {
     try {
@@ -4250,6 +4328,104 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     } catch (e) {}
   })();
 
+})();
+
+(function installImmediateSaveForMapStyleToggles() {
+  try {
+    const KEY = 'wplace_map_style_cfg_v2'; // 与已有 saveState/readState 保持一致的 key
+    function writeCfgToStorage(obj) {
+      try {
+        if (window.chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ [KEY]: obj });
+        } else {
+          localStorage.setItem(KEY, JSON.stringify(obj));
+        }
+      } catch (e) {
+        try { localStorage.setItem(KEY, JSON.stringify(obj)); } catch(_) {}
+      }
+    }
+    function readCfgFromStorageSync() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (e) { return null; }
+    }
+
+    function notifyPageConfig(cfg) {
+      try {
+        // 兼容原有通信：postMessage SET_CONFIG
+        window.postMessage(Object.assign({ __wplace_style_patch: 'SET_CONFIG' }, cfg), '*');
+        // 额外广播 CONFIG_UPDATED 以便注入脚本强制刷新/应用
+        window.postMessage({ __wplace_style_patch: 'CONFIG_UPDATED', config: cfg }, '*');
+      } catch (e) {}
+    }
+
+    function getCurrentPanelCfg() {
+      return {
+        stripRoads: !!(chkRoads && chkRoads.checked),
+        stripNames: !!(chkNames && chkNames.checked)
+      };
+    }
+
+    function onToggleChange() {
+      try {
+        const cfg = getCurrentPanelCfg();
+        // 更新内存全局，供脚本内直接读取
+        try {
+          window.__WPLACE_STYLE_PATCH_CONFIG = Object.assign({}, window.__WPLACE_STYLE_PATCH_CONFIG || {}, cfg);
+        } catch(e){}
+        // persist immediately
+        writeCfgToStorage(cfg);
+        // notify page so injected script can apply without reload
+        notifyPageConfig(cfg);
+      } catch (e) {}
+    }
+
+    // attach listeners (guard for existence)
+    try { if (chkRoads) chkRoads.addEventListener('change', onToggleChange); } catch(e){}
+    try { if (chkNames) chkNames.addEventListener('change', onToggleChange); } catch(e){}
+
+    // initialize panel UI from storage (so when panel opens it reflects last-saved state)
+    (function initFromStorage() {
+      try {
+        // try chrome.storage first (async), fallback to localStorage
+        if (window.chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get([KEY], res => {
+            try {
+              const stored = res && res[KEY];
+              const src = stored || readCfgFromStorageSync();
+              if (src && typeof src === 'object') {
+                if (chkRoads) chkRoads.checked = !!src.stripRoads;
+                if (chkNames) chkNames.checked = !!src.stripNames;
+                try { window.__WPLACE_STYLE_PATCH_CONFIG = Object.assign({}, window.__WPLACE_STYLE_PATCH_CONFIG || {}, src); } catch(e){}
+              }
+            } catch(e){}
+          });
+        } else {
+          const src = readCfgFromStorageSync();
+          if (src && typeof src === 'object') {
+            if (chkRoads) chkRoads.checked = !!src.stripRoads;
+            if (chkNames) chkNames.checked = !!src.stripNames;
+            try { window.__WPLACE_STYLE_PATCH_CONFIG = Object.assign({}, window.__WPLACE_STYLE_PATCH_CONFIG || {}, src); } catch(e){}
+          }
+        }
+      } catch (e) {}
+    })();
+
+    // expose helper to manually apply current stored cfg (optional)
+    try {
+      window.__wplace_apply_map_style_cfg = function() {
+        try {
+          const cfg = getCurrentPanelCfg();
+          notifyPageConfig(cfg);
+        } catch (e) {}
+      };
+    } catch (e) {}
+
+  } catch (e) {
+    console.warn('installImmediateSaveForMapStyleToggles failed', e);
+  }
 })();
 
 // --------- final small checks ----------
