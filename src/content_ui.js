@@ -224,7 +224,7 @@ langSel.addEventListener("change", () => {
   if (themeSel) {
     for (const opt of Array.from(themeSel.options)) {
       if (opt.value === 'custom-winter') opt.textContent = t('theme_default');
-      else if (opt.value === 'custom-summer') opt.textContent = t('theme_dark');
+      else if (opt.value === 'dark') opt.textContent = t('theme_dark');
     }
   }
   } catch (e) {}
@@ -1202,7 +1202,7 @@ langSel.addEventListener("change", () => {
 
     const options = [
       { key: 'theme_default', value: 'custom-winter' },
-      { key: 'theme_dark', value: 'custom-summer' }
+      { key: 'theme_dark', value: 'dark' }
     ];
     options.forEach(o => {
       const opt = document.createElement('option');
