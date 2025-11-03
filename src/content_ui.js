@@ -2398,7 +2398,6 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
   window.__wplace_click_center_zoom_installed = true;
 
   const DEFAULT = {
-    // click-based slow wheel settings (single-click behavior unchanged)
     deltaPerEvent: -300,
     intervalMs: 100,
     maxEvents: 5000,
@@ -2407,30 +2406,35 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     useCapture: true,
     clickMoveThreshold: 6,
     clickMaxDurationMs: 500,
-    // notification selector variants (including exact element you pasted)
     removeNotificationSelector:
       'section[aria-label="Notifications alt+T"][aria-live="polite"][aria-relevant="additions text"][aria-atomic="false"].svelte-tppj9g[tabindex="-1"],' +
       'section[aria-label="Notifications alt+T"][aria-live="polite"][aria-relevant="additions text"][aria-atomic="false"][tabindex="-1"],' +
       'section[aria-label="Notifications alt+T"][tabindex="-1"].svelte-tppj9g,' +
       'section[aria-label="Notifications alt+T"],' +
       'section.svelte-tppj9g[aria-label="Notifications alt+T"]',
-    // keys: Q/E for continuous zoom
+    // Q/E keys
     zoomKey: 'q',
     shrinkKey: 'e',
-    // single-shot smooth settings (simulateZoom/simulateShrink)
+    // smooth single-shot
     smoothDurationMs: 800,
     zoomCount: 8,
     shrinkCount: 8,
     zoomDeltaPerEventMultiplier: 0.45,
     shrinkDeltaPerEventMultiplier: 0.45,
-    // continuous fixed-rate control: wheel-delta applied per second while holding Q/E
-    // 调整此值来增减按住时的放缩速度（单位：wheel delta / second）
-    controlZoomDeltaPerSecond: 2400
+    // continuous control (made more natural by default)
+    controlZoomDeltaPerSecond: 900,      // initial target per-second
+    controlZoomMaxDeltaPerSecond: 4800,  // safety cap
+    rampUpMs: 300,                       // smooth acceleration
+    rampDownMs: 150,                     // smooth deceleration
+    // right-hold behavior tuning
+    rightHoldMs: 500,
+    rightHoldMoveThreshold: 10,
+    // continuous fixed-rate fallback
+    controlZoomDeltaPerSecond_fallback: 2400
   };
 
   const state = {
     cfg: Object.assign({}, DEFAULT),
-    // click-slow-wheel
     running: false,
     sent: 0,
     timerId: null,
@@ -2440,23 +2444,18 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     lastMousePos: null,
     lastPoint: { x: 0, y: 0 },
 
-    // click detection
     mouseDownPos: null,
     mouseDownTime: 0,
     moved: false,
     listenersAttached: false,
 
-    // pointer tracking
     pointerListenerAttached: false,
-
-    // single-shot smooth controller
     smoothController: null,
 
-    // continuous zoom state for Q/E (RAF-driven)
     continuousZoom: { rafId: null, running: false, direction: 0, lastTime: 0 }
   };
 
-  /* ---------- helpers ---------- */
+  /* helpers */
   function qButton() {
     const sel = state.cfg.buttonSelector || '';
     try {
@@ -2512,7 +2511,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     return { x: cx, y: cy };
   }
 
-  /* ---------- click-slow-wheel logic (unchanged speed) ---------- */
+  /* click-slow-wheel logic */
   async function loopOnce(x, y) {
     if (!state.running) return;
     if (!isVisible(qButton())) { stop('button-gone-before'); return; }
@@ -2543,7 +2542,6 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     });
     try { state.observer.observe(document.documentElement || document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] }); } catch (e) {}
     state.timerId = setInterval(() => { if (!state.running) return; loopOnce(x, y); }, state.cfg.intervalMs);
-    console.log('slowWheelUntilButtonGone started at', x, y);
   }
 
   function stop(reason = 'stopped') {
@@ -2552,10 +2550,9 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     if (state.observer) { try { state.observer.disconnect(); } catch (e) {} state.observer = null; }
     stopContinuousZoom();
     if (state.smoothController) { state.smoothController.cancel(); state.smoothController = null; }
-    console.log('slowWheelUntilButtonGone stopped:', reason, 'eventsSent:', state.sent);
   }
 
-  /* ---------- click detection: 在单击前立即删除指定通知 section ---------- */
+  /* left-click detection (unchanged) */
   function onMouseDown(e) {
     if (e.button !== 0) return;
     state.mouseDownPos = { x: e.clientX, y: e.clientY };
@@ -2569,36 +2566,28 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     if (Math.hypot(dx, dy) > (state.cfg.clickMoveThreshold || 6)) state.moved = true;
   }
   function onMouseUp(e) {
-  if (e.button !== 0) { state.mouseDownPos = null; return; }
-  const duration = Date.now() - (state.mouseDownTime || 0);
-  const moved = !!state.moved;
-  state.mouseDownPos = null;
-  state.mouseDownTime = 0;
-  state.moved = false;
-  if (moved) return;
-  if (duration > (state.cfg.clickMaxDurationMs || 500)) return;
+    if (e.button !== 0) { state.mouseDownPos = null; return; }
+    const duration = Date.now() - (state.mouseDownTime || 0);
+    const moved = !!state.moved;
+    state.mouseDownPos = null;
+    state.mouseDownTime = 0;
+    state.moved = false;
+    if (moved) return;
+    if (duration > (state.cfg.clickMaxDurationMs || 500)) return;
 
-  try {
-    // --- 新增：如果点击发生在需要忽略的元素上，则不做任何动作 ---
     try {
-      // marker 的完整类选择器（基于你给出的 HTML）
       const markerSelector = '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center';
-      // 弹窗内的圆形小按钮（关闭按钮）位于 .rounded-t-box 内
       const popupCloseBtnSelector = '.rounded-t-box button.btn.btn-circle.btn-sm';
       if (e.target && (e.target.closest && (
             e.target.closest(markerSelector) ||
             e.target.closest(popupCloseBtnSelector)
           ))) {
-        // 点击在需要忽略的元素上：直接返回，不移除通知、不触发慢速滚轮
         return;
       }
     } catch (innerErr) {}
 
-    // 1) 先立即移除你指定的通知 section（有多种变体，removeNotificationSectionsFrom 会处理）
     try { removeNotificationSectionsFrom(document); } catch (err) {}
-    // 2) 再启动单击触发的慢速派发（速度保持原样）
     startAt(e.clientX, e.clientY);
-  } catch (err) {}
   }
   function attachClickListener() {
     if (state.listenersAttached) return;
@@ -2610,7 +2599,6 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
       window.addEventListener('mousemove', window.__slowWheelUntilButtonGoneOnMouseMove, !!state.cfg.useCapture);
       window.addEventListener('mouseup', window.__slowWheelUntilButtonGoneOnMouseUp, !!state.cfg.useCapture);
       state.listenersAttached = true;
-      console.log('listening for single clicks (drag ignored)');
     } catch (e) {}
   }
   function detachClickListener() {
@@ -2622,7 +2610,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     state.listenersAttached = false;
   }
 
-  /* ---------- pointer tracking for focus pos ---------- */
+  /* pointer tracking */
   function onPointerMove(e) {
     try {
       if (e.pointerType === 'mouse' || typeof e.pointerType === 'undefined') {
@@ -2645,7 +2633,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     state.pointerListenerAttached = false;
   }
 
-  /* ---------- remove notification section (robust) ---------- */
+  /* remove notification sections */
   function removeNotificationSectionsFrom(root) {
     try {
       const sel = state.cfg.removeNotificationSelector;
@@ -2655,7 +2643,6 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
       try {
         list = Array.from(rootNode.querySelectorAll(sel));
       } catch (e) {
-        // fallback: manual matching for the exact attribute set you provided
         const nodes = Array.from(rootNode.getElementsByTagName('section'));
         for (const n of nodes) {
           try {
@@ -2674,7 +2661,6 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
       for (const el of list) {
         try { if (el && el.parentNode) { el.parentNode.removeChild(el); removed += 1; } } catch (e) {}
       }
-      if (removed) console.log('removed notification section(s):', removed);
       return removed;
     } catch (e) { return 0; }
   }
@@ -2701,7 +2687,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     } catch (e) {}
   }
 
-  /* ---------- Smooth single-shot controller (keeps simulateZoom/ simulateShrink) ---------- */
+  /* SmoothController */
   function SmoothController() {
     let rafId = null; let startTime = 0; let duration = 0; let cx = 0, cy = 0; let onFrame = null; let cancelled = false;
     this.start = function(opts) {
@@ -2768,45 +2754,76 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     simulateSmooth(totalDelta, pos.x, pos.y, state.cfg.smoothDurationMs);
   }
 
-  /* ---------- Continuous fixed-rate zoom (RAF time-driven) ---------- */
+  /* Continuous zoom with ramping */
+  let _ramp = { rafId: null, startTime: 0, targetDir: 0 };
+
   function startContinuousZoom(direction) {
     // direction: +1 zoom-in, -1 zoom-out
     stopContinuousZoom();
+
+    _ramp.startTime = performance.now();
+    _ramp.targetDir = Math.sign(direction) || 1;
+
+    const cfgPerSec = Math.abs(Number(state.cfg.controlZoomDeltaPerSecond || state.cfg.controlZoomDeltaPerSecond_fallback));
+    const targetPerSec = Math.min(Number(state.cfg.controlZoomMaxDeltaPerSecond || cfgPerSec), cfgPerSec);
+    const rampUpMs = Number(state.cfg.rampUpMs || 300);
+
     state.continuousZoom.running = true;
-    state.continuousZoom.direction = direction;
+    state.continuousZoom.direction = _ramp.targetDir;
     state.continuousZoom.lastTime = performance.now();
 
-    const cfgPerSec = Number(state.cfg.controlZoomDeltaPerSecond) || 2400;
-    // signed per-second wheel-delta depending on direction
-    const signedPerSec = (direction > 0) ? Math.abs(cfgPerSec) : -Math.abs(cfgPerSec);
-
     function step(now) {
-      if (!state.continuousZoom.running) { state.continuousZoom.rafId = null; return; }
+      if (!state.continuousZoom.running) { _ramp.rafId = null; return; }
+      const elapsedSinceStart = now - _ramp.startTime;
+      const rampProgress = rampUpMs > 0 ? Math.min(1, elapsedSinceStart / rampUpMs) : 1;
+      const perSec = targetPerSec * rampProgress * _ramp.targetDir;
       const elapsed = now - state.continuousZoom.lastTime;
       state.continuousZoom.lastTime = now;
-      const deltaToApply = signedPerSec * (elapsed / 1000);
-      const pos = getFocusPosOrCenter();
+      const deltaToApply = perSec * (elapsed / 1000);
       try {
+        const pos = getFocusPosOrCenter();
         const tx = Math.round(pos.x), ty = Math.round(pos.y);
         const targetEl = document.elementFromPoint(tx, ty) || document.body;
         targetEl.dispatchEvent(makeWheel(tx, ty, 0, deltaToApply));
         state.sent += 1;
       } catch (e) {}
-      state.continuousZoom.rafId = requestAnimationFrame(step);
+      _ramp.rafId = requestAnimationFrame(step);
     }
-    state.continuousZoom.rafId = requestAnimationFrame(step);
+    _ramp.rafId = requestAnimationFrame(step);
   }
 
   function stopContinuousZoom() {
-    if (state.continuousZoom.rafId) {
-      try { cancelAnimationFrame(state.continuousZoom.rafId); } catch (e) {}
-      state.continuousZoom.rafId = null;
-    }
-    state.continuousZoom.running = false;
-    state.continuousZoom.direction = 0;
+    if (!state.continuousZoom.running && !_ramp.rafId) return;
+    const rampDownMs = Number(state.cfg.rampDownMs || 150);
+    const endAt = performance.now() + rampDownMs;
+    const dir = state.continuousZoom.direction || _ramp.targetDir || 0;
+    if (_ramp.rafId) { try { cancelAnimationFrame(_ramp.rafId); } catch (e) {} _ramp.rafId = null; }
+
+    (function decay(prev) {
+      const now = performance.now();
+      const remain = Math.max(0, endAt - now);
+      const t = rampDownMs > 0 ? (remain / rampDownMs) : 0;
+      const decayFactor = t;
+      if (decayFactor > 0) {
+        try {
+          const perSec = Math.abs(Number(state.cfg.controlZoomDeltaPerSecond || state.cfg.controlZoomDeltaPerSecond_fallback));
+          const deltaToApply = dir * perSec * decayFactor * ((now - (prev || now)) / 1000);
+          const pos = getFocusPosOrCenter();
+          const tx = Math.round(pos.x), ty = Math.round(pos.y);
+          const targetEl = document.elementFromPoint(tx, ty) || document.body;
+          targetEl.dispatchEvent(makeWheel(tx, ty, 0, deltaToApply));
+          state.sent += 1;
+        } catch (e) {}
+        requestAnimationFrame(() => decay(now));
+      } else {
+        state.continuousZoom.running = false;
+        state.continuousZoom.direction = 0;
+        _ramp.targetDir = 0;
+      }
+    })();
   }
 
-  /* ---------- Key handlers (only Q/E for continuous fixed-rate zoom) ---------- */
+  /* Key handlers */
   function onKeyDownHandler(e) {
     try {
       if (!e || !e.key) return;
@@ -2851,7 +2868,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     } catch (e) {}
   }
 
-  /* ---------- Observers for button presence and notification removal ---------- */
+  /* Observers */
   function startObservingButtonPresence() {
     if (state.buttonObserver) return;
     if (isVisible(qButton())) attachClickListener();
@@ -2862,7 +2879,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     try { state.buttonObserver.observe(document.documentElement || document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] }); } catch (e) {}
   }
 
-  /* ---------- Public API ---------- */
+  /* Public API */
   window.__slowWheelUntilButtonGone = {
     config: state.cfg,
     isRunning() { return state.running || (state.continuousZoom && state.continuousZoom.running) || (state.smoothController && state.smoothController.isRunning()); },
@@ -2904,19 +2921,100 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
       try { if (state.notifObserver) { state.notifObserver.disconnect(); state.notifObserver = null; } } catch(e){}
       try { delete window.__slowWheelUntilButtonGone; } catch(e){}
       window.__wplace_click_center_zoom_installed = false;
-      console.log('slowWheelUntilButtonGone destroyed');
     },
     info() { return { running: state.running, continuousZoom: state.continuousZoom.running, lastMousePos: state.lastMousePos, sent: state.sent, config: state.cfg }; }
   };
 
-  /* ---------- initialize ---------- */
+  /* initialize */
   startNotifObserver();
   startObservingButtonPresence();
   try { if (isVisible(qButton())) attachClickListener(); } catch (e) {}
   attachKeyListener();
   attachPointerTracker();
 
-  console.log('ready: specified notification section removed on click; hold Q/E for fixed-rate zoom (config.controlZoomDeltaPerSecond); single-click slow-zoom unchanged.');
+  /* Right-button long-press acts like pressing Q (with smoother tuning) */
+  (function installRightHoldAsQ() {
+    const HOLD_MS = Number(state.cfg.rightHoldMs || 500);
+    const MOVE_THRESHOLD = Number(state.cfg.rightHoldMoveThreshold || 10);
+    let rightState = { pressed: false, timer: null, active: false, startX: 0, startY: 0, moved: false, suppressHandler: null };
+
+    function popupExists() {
+      try {
+        return !!document.querySelector('.rounded-t-box.bg-base-100.border-base-300.w-full.border-t.py-3');
+      } catch (e) { return false; }
+    }
+
+    function onRightDown(e) {
+      if (e.button !== 2) return;
+      if (popupExists()) return;
+      if (isTypingElement(document.activeElement)) return;
+
+      rightState.pressed = true;
+      rightState.moved = false;
+      rightState.startX = e.clientX;
+      rightState.startY = e.clientY;
+
+      rightState.timer = setTimeout(() => {
+        if (!rightState.pressed) return;
+        // small movement still considered hold
+        rightState.active = true;
+        try { attachPointerTracker(); attachKeyListener(); } catch (_) {}
+        try { startContinuousZoom(+1); } catch (_) {}
+        try {
+          rightState.suppressHandler = function(ev) { if (rightState.active) { ev.preventDefault(); ev.stopImmediatePropagation(); } };
+          window.addEventListener('contextmenu', rightState.suppressHandler, true);
+        } catch (_) { rightState.suppressHandler = null; }
+      }, HOLD_MS);
+    }
+
+    function onRightMove(e) {
+      if (!rightState.pressed) return;
+      const dx = e.clientX - rightState.startX;
+      const dy = e.clientY - rightState.startY;
+      if (Math.hypot(dx, dy) > MOVE_THRESHOLD) rightState.moved = true;
+    }
+
+    function onRightUp(e) {
+      if (e.button !== 2) return;
+      if (rightState.timer) { clearTimeout(rightState.timer); rightState.timer = null; }
+      const wasActive = rightState.active;
+      rightState.pressed = false;
+      rightState.active = false;
+
+      try { stopContinuousZoom(); } catch (_) {}
+
+      try {
+        if (rightState.suppressHandler) {
+          window.removeEventListener('contextmenu', rightState.suppressHandler, true);
+          rightState.suppressHandler = null;
+        }
+      } catch (_) {}
+
+      if (wasActive) {
+        const once = function(ev){ ev.preventDefault(); ev.stopImmediatePropagation(); window.removeEventListener('contextmenu', once, true); };
+        try { window.addEventListener('contextmenu', once, true); } catch (_) {}
+      }
+    }
+
+    try {
+      window.addEventListener('mousedown', onRightDown, true);
+      window.addEventListener('pointermove', onRightMove, true);
+      window.addEventListener('mouseup', onRightUp, true);
+
+      if (!window.__wplace_right_hold_q_installed) {
+        window.__wplace_right_hold_q_installed = true;
+        window.__wplace_uninstall_right_hold_q = function() {
+          try {
+            window.removeEventListener('mousedown', onRightDown, true);
+            window.removeEventListener('pointermove', onRightMove, true);
+            window.removeEventListener('mouseup', onRightUp, true);
+          } catch (e) {}
+          window.__wplace_right_hold_q_installed = false;
+        };
+      }
+    } catch (e) {}
+  })();
+
 })();
 
 // --------- final small checks ----------
