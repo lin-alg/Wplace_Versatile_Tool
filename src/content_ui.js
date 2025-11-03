@@ -3662,7 +3662,7 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     rampUpMs: 300,                       // smooth acceleration
     rampDownMs: 150,                     // smooth deceleration
     // right-hold behavior tuning
-    rightHoldMs: 500,
+    rightHoldMs: 0,
     rightHoldMoveThreshold: 10,
     // continuous fixed-rate fallback
     controlZoomDeltaPerSecond_fallback: 2400
