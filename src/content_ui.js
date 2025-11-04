@@ -1132,63 +1132,6 @@ function compareVersionsMain(a, b) {
   return 0;
 }
 
-async function initLocalVersionFromManifest() {
-  try {
-    // try to read already-known values first
-    let existing = null;
-    try { existing = localStorage.getItem('wplace_local_version') || localStorage.getItem('wplace_local_meta'); } catch(e){ existing = null; }
-    if (existing) return; // already initialized
-
-    // try manifest.json via chrome.runtime.getURL if available
-    try {
-      if (chrome && chrome.runtime && chrome.runtime.getURL) {
-        const url = chrome.runtime.getURL('manifest.json');
-        const resp = await fetch(url, { cache: 'no-store' }).catch(()=>null);
-        if (resp && resp.ok) {
-          const j = await resp.json().catch(()=>null);
-          if (j && j.version) {
-            try { localStorage.setItem('wplace_local_version', String(j.version)); } catch(e){}
-            try { window.__wplace_local_version = String(j.version); } catch(e){}
-            return;
-          }
-        }
-      }
-    } catch(e){}
-
-    // fallback: try wplace_meta.json (if you bundle one)
-    try {
-      if (chrome && chrome.runtime && chrome.runtime.getURL) {
-        const url2 = chrome.runtime.getURL('wplace_meta.json');
-        const r2 = await fetch(url2, { cache: 'no-store' }).catch(()=>null);
-        if (r2 && r2.ok) {
-          const m2 = await r2.json().catch(()=>null);
-          if (m2 && m2.version) {
-            try { localStorage.setItem('wplace_local_version', String(m2.version)); } catch(e){}
-            try { window.__wplace_local_version = String(m2.version); } catch(e){}
-            return;
-          }
-        }
-      }
-    } catch(e){}
-
-    // final fallback: read manifest via relative URL (rare in MV3 but harmless)
-    try {
-      const r3 = await fetch('/manifest.json', { cache: 'no-store' }).catch(()=>null);
-      if (r3 && r3.ok) {
-        const j3 = await r3.json().catch(()=>null);
-        if (j3 && j3.version) {
-          try { localStorage.setItem('wplace_local_version', String(j3.version)); } catch(e){}
-          try { window.__wplace_local_version = String(j3.version); } catch(e){}
-          return;
-        }
-      }
-    } catch(e){}
-  } catch (err) {
-    // silent fail — initialization best-effort only
-    try { console.debug('initLocalVersionFromManifest failed', err); } catch(_) {}
-  }
-}
-
 // call it once (no await required to avoid blocking UI)
 async function ensureLocalVersionIsSet() {
   try {
@@ -2177,18 +2120,6 @@ try {
   }
 
   // ---------- Smart detection & filling (header-aware) ----------
-  function detectPageHeaderType() {
-    try {
-      const hs = Array.from(document.querySelectorAll('h1,h2,h3')).map(h => (h.innerText || '').trim());
-      for (const txt of hs) {
-        const low = txt.toLowerCase();
-        if (low.includes('skirk')) return 'skirk';
-        if (low.includes('blue')) return 'blue';
-      }
-    } catch (e) {}
-    return null;
-  }
-
   function detectBmGroups() {
     const groups = [];
     const seen = new Set();
@@ -3726,8 +3657,8 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
       'section[aria-label="Notifications alt+T"],' +
       'section.svelte-tppj9g[aria-label="Notifications alt+T"]',
     // Q/E keys
-    zoomKey: 'q',
-    shrinkKey: 'e',
+    zoomKey: 'd',
+    shrinkKey: 'a',
     // smooth single-shot
     smoothDurationMs: 800,
     zoomCount: 8,
@@ -3879,6 +3810,15 @@ try { installShareAndFavHandlers(); } catch (e) { console.warn('installShareAndF
     if (Math.hypot(dx, dy) > (state.cfg.clickMoveThreshold || 6)) state.moved = true;
   }
   function onMouseUp(e) {
+    try {
+    if (e && e.target && e.target.closest && e.target.closest('#wplace_locator')) {
+      // 重置临时状态，避免残留 mouseDown 等
+      state.mouseDownPos = null;
+      state.mouseDownTime = 0;
+      state.moved = false;
+      return;
+    }
+  } catch (err) { }
     if (e.button !== 0) { state.mouseDownPos = null; return; }
     const duration = Date.now() - (state.mouseDownTime || 0);
     const moved = !!state.moved;
@@ -4636,23 +4576,193 @@ try {
           return;
         }
         doHide(cand);
-        showToast && showToast('已隐藏 bm 面板，按 Z 可复原');
+        showToast && showToast('已隐藏 bm 面板，按 S 可复原');
       } catch (e) {}
     }
 
     function onKeyDown(e) {
-      try {
-        if (e && e.repeat) return;
-        const active = document.activeElement;
-        const tag = (active && active.tagName || '').toLowerCase();
-        if (active && (active.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select')) return;
-        if (e.key === 'z' || e.key === 'Z') {
-          e.preventDefault && e.preventDefault();
-          e.stopPropagation && e.stopPropagation();
-          toggle();
+    try {
+      if (e && e.repeat) return;
+      const active = document.activeElement;
+      const tag = (active && active.tagName || '').toLowerCase();
+      if (active && (active.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select')) return;
+
+      if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault && e.preventDefault();
+        e.stopPropagation && e.stopPropagation();
+
+        // helper: try clicking a selector, return true if clicked
+        function tryClickSelector(sel) {
+          try {
+            const el = document.querySelector(sel);
+            if (el) {
+              // prefer dispatch a pointer event then click to better trigger handlers
+              try {
+                const ev = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 });
+                el.dispatchEvent(ev);
+                const ev2 = new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 });
+                el.dispatchEvent(ev2);
+              } catch (_) {}
+              try { el.click(); } catch (_) {}
+              return true;
+            }
+          } catch (_) {}
+          return false;
         }
-      } catch (e) {}
+
+        try {
+          if (state.isHidden) {
+            // BM 面板当前是隐藏的 -> 恢复 BM 面板
+            try { doRestore(); } catch (_) {}
+            // 优先尝试点击浮动图标来恢复主面板
+            if (!tryClickSelector('#bm_min_icon_btn') && !tryClickSelector('.bm-floating-toggle')) {
+              try { if (typeof doRestore === 'function') doRestore(); } catch (_) {}
+            }
+          } else {
+            // BM 面板当前显示 -> 隐藏 BM 面板并最小化主面板
+            const cand = findBmCandidate();
+            if (!cand) {
+              showToast && showToast('未找到 bm 面板');
+            } else {
+              try { doHide(cand); } catch (_) {}
+              showToast && showToast('已隐藏 bm 面板，按 S 可复原');
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (e) {}
+    try {
+    // 忽略重复事件
+    if (e && e.repeat) return;
+
+    // 如果在输入框或可编辑区域中，不响应全局快捷键
+    const active = document.activeElement;
+    const tag = (active && active.tagName || '').toLowerCase();
+    if (active && (active.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select')) return;
+
+    // 只对 W 键处理
+    if (e.key !== 's' && e.key !== 'S') return;
+
+    // 阻止默认并阻断传播
+    try { e.preventDefault && e.preventDefault(); } catch (_) {}
+    try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
+
+    // 工具函数：显示提示（若存在 showToast）
+    function toast(msg) { try { showToast && showToast(msg); } catch (_) { /* ignore */ } }
+
+    // 取得主面板元素与浮动图标
+    const root = document.getElementById('wplace_locator');
+    const floatBtn = document.getElementById('wplace_min_icon_btn') || window.__wplace_floatBtn;
+
+    // 标记持久化 key
+    function persistMinimizedFlag(val) {
+      try { localStorage.setItem('wplace_minimized_v2', val ? '1' : '0'); } catch (e) {}
+      try { if (chrome && chrome.storage && chrome.storage.local) chrome.storage.local.set({ wplace_minimized_v2: !!val }); } catch (e) {}
     }
+
+    // 将面板设为最小化（关闭）：在 style 中加入 display:none 并写入 data 标记
+    function hideMainPanelDirect() {
+      try {
+        let el = document.getElementById('wplace_locator');
+        if (!el) return false;
+        // 保存原始样式到属性，便于恢复
+        try {
+          if (!el.getAttribute('data-wplace-saved-style')) {
+            el.setAttribute('data-wplace-saved-style', el.getAttribute('style') || '');
+          }
+        } catch (_) {}
+        // 设置样式确保确切行为（按需求的样式串）
+        const wanted = 'min-width: 380px; max-width: 801px; position: fixed; display: none; box-sizing: border-box; inset: 40px auto auto 40px; width: 380px; height: 150px;';
+        el.setAttribute('style', wanted);
+        el.setAttribute('data-wplace-minimized', 'true');
+        persistMinimizedFlag(true);
+        // 显示浮动图标（若存在）
+        try { if (floatBtn) floatBtn.style.display = 'flex'; } catch (_) {}
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // 恢复面板：移除 display:none 并恢复之前保存的样式（若有）
+    function showMainPanelDirect() {
+      try {
+        let el = document.getElementById('wplace_locator');
+        if (!el) {
+          // 如果没有主面板但有备份，尝试恢复备份（与原有恢复逻辑互补）
+          try {
+            const backup = window.__wplace_removed_backup;
+            const meta = window.__wplace_removed_backup_meta || {};
+            if (backup) {
+              // 优先按保存的 parent / nextSibling 恢复
+              let inserted = false;
+              try {
+                const parent = meta.parent || document.body;
+                const next = meta.nextSibling;
+                if (parent && parent.nodeType === 1) {
+                  if (next && next.parentNode === parent) parent.insertBefore(backup, next);
+                  else parent.appendChild(backup);
+                  inserted = true;
+                }
+              } catch (_) { inserted = false; }
+              if (!inserted) {
+                try { document.body.appendChild(backup); inserted = true; } catch (_) { inserted = false; }
+              }
+              try { delete window.__wplace_removed_backup; delete window.__wplace_removed_backup_meta; } catch(_) {}
+              toast('已恢复 Wplace 主面板');
+              persistMinimizedFlag(false);
+              return true;
+            }
+          } catch (_) {}
+          return false;
+        }
+
+        // 移除 minimized 标记与 display:none
+        try {
+          // 如果保存了旧 style，则还原；否则移除 style 属性以回到 CSS 默认/程序设置
+          const saved = el.getAttribute('data-wplace-saved-style');
+          if (typeof saved !== 'undefined' && saved !== null) {
+            if (saved.length) el.setAttribute('style', saved);
+            else el.removeAttribute && el.removeAttribute('style');
+            try { el.removeAttribute('data-wplace-saved-style'); } catch (_) {}
+          } else {
+            // 若没有保存，尝试仅删除 display:none 而保留其它内联样式
+            try {
+              const cur = el.getAttribute('style') || '';
+              const next = cur.replace(/\bdisplay\s*:\s*none\s*;?/i, '').trim();
+              if (next.length) el.setAttribute('style', next);
+              else el.removeAttribute && el.removeAttribute('style');
+            } catch (_) {}
+          }
+        } catch (_) {}
+
+        try { el.removeAttribute && el.removeAttribute('data-wplace-minimized'); } catch (_) {}
+        persistMinimizedFlag(false);
+        // 隐藏浮动图标（若存在）
+        try { if (floatBtn) floatBtn.style.display = 'none'; } catch (_) {}
+        toast('已恢复 Wplace 主面板');
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // 询问当前状态并切换
+    try {
+      const isMin = !!(root && root.getAttribute && root.getAttribute('data-wplace-minimized') === 'true');
+      const persisted = (() => {
+        try { return localStorage.getItem('wplace_minimized_v2') === '1'; } catch(_) { return false; }
+      })();
+
+      // 优先判断 DOM 中的实际状态；若 root 不在 DOM 则视为已隐藏
+      if (!root || isMin || persisted) {
+        // 目前认为是隐藏状态 -> 恢复
+        const ok = showMainPanelDirect();
+        if (!ok) toast('未找到主面板或恢复失败');
+      } else {
+        // 目前显示 -> 隐藏
+        const ok = hideMainPanelDirect();
+        if (!ok) toast('未找到主面板以隐藏');
+        else toast('已隐藏主面板，按 S 可复原');
+      }
+    } catch (_) {}} catch (err) {}
+  }
 
     window.addEventListener('keydown', onKeyDown, true);
 
@@ -4670,5 +4780,139 @@ try {
 
   } catch (e) {
     console.warn('installZToggleForBmDashDash failed', e);
+  }
+})();
+
+// --------- 初始化优先读取掩码并在 5s 冷却期内忽略 console 驱动的变更 ----------
+(function installConsoleSyncWithStartupGuard() {
+  try {
+    const STORAGE_KEY = 'bm_mask_v1';
+    const COOL_DOWN_MS = 5000;
+    let allowConsoleAt = Date.now() + COOL_DOWN_MS; // 冷却期内忽略 console 指令
+
+    // helpers from prior implementation (BigInt mask utils)
+    function readMask() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return 0n;
+        return BigInt(raw);
+      } catch (e) { return 0n; }
+    }
+    function writeMask(maskBigInt) {
+      try {
+        localStorage.setItem(STORAGE_KEY, maskBigInt.toString());
+        try { window.dispatchEvent(new CustomEvent('bm_mask_updated', { detail: { mask: maskBigInt.toString() } })); } catch(e){}
+      } catch (e) {}
+    }
+    function setBit(maskBigInt, index, val) {
+      const TOTAL_BITS = 64;
+      if (index < 0 || index >= TOTAL_BITS) return maskBigInt;
+      const bit = 1n << BigInt(index);
+      return val ? (maskBigInt | bit) : (maskBigInt & ~bit);
+    }
+
+    // apply stored mask to UI immediately (reuse existing binding function if present)
+    try {
+      // If you have a function syncUiFromMask() available in scope, call it; otherwise perform a best-effort apply
+      if (typeof syncUiFromMask === 'function') {
+        syncUiFromMask();
+      } else {
+        // best-effort: trigger an event so other code can react
+        const mask = readMask();
+        try { window.dispatchEvent(new CustomEvent('bm_mask_initial_apply', { detail: { mask: mask.toString() } })); } catch(e){}
+      }
+    } catch (e) {}
+
+    // After initial apply, ensure we wait COOL_DOWN_MS before accepting console-driven changes.
+    // Hijack console but do not apply changes if within cool-down window.
+    (function hijackConsole() {
+      try {
+        const orig = {
+          log: console.log && console.log.bind(console),
+          info: console.info && console.info.bind(console),
+          warn: console.warn && console.warn.bind(console),
+          error: console.error && console.error.bind(console)
+        };
+
+        function parserAndForward(fn, args) {
+          try {
+            // forward first (so logs still appear quickly)
+            try { fn(...args); } catch (e) {}
+
+            // don't process console-driven changes during cool-down
+            if (Date.now() < allowConsoleAt) return;
+
+            // join args to string for parsing
+            const raw = args.map(a => {
+              try { return (typeof a === 'string') ? a : JSON.stringify(a); } catch (e) { return String(a); }
+            }).join(' ');
+
+            const m = raw.match(/Blue\\s*Marble\\s*:\\s*(Enabled|Disabled)\\s*(\\d{1,3}\\s*,\\s*\\d{1,3}\\s*,\\s*\\d{1,3})/i);
+            if (!m) return;
+
+            const action = m[1].toLowerCase(); // 'enabled' or 'disabled'
+            const rgb = m[2].replace(/\\s/g, '');
+            // attempt to find corresponding index via a global COLORS array if present
+            let idx = null;
+            try {
+              if (window.__BM_COLOR_MAP && typeof window.__BM_COLOR_MAP === 'object') {
+                idx = window.__BM_COLOR_MAP[rgb] ?? null;
+              }
+            } catch (e) { idx = null; }
+
+            // if no global map, attempt best-effort to find by scanning DOM rows
+            if (idx === null) {
+              try {
+                const container = document.querySelector('#bm-g');
+                if (container) {
+                  const rows = Array.from(container.querySelectorAll('div')).filter(d => d.querySelector && d.querySelector('input[type="checkbox"]'));
+                  for (let i = 0; i < rows.length; i++) {
+                    try {
+                      const sw = rows[i].querySelector('div[style*="background"]') || rows[i].querySelector('div');
+                      const style = (sw && sw.getAttribute && sw.getAttribute('style')) || '';
+                      const mm = style.match(/rgb\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)/);
+                      if (mm) {
+                        const t = `${Number(mm[1])},${Number(mm[2])},${Number(mm[3])}`;
+                        if (t === rgb) { idx = i; break; }
+                      }
+                    } catch (e) { /* per-row ignore */ }
+                  }
+                }
+              } catch (e) {}
+            }
+
+            if (idx === null) return; // 无法定位到索引则放弃
+
+            // apply to mask and persist
+            try {
+              const mask = readMask();
+              const newMask = setBit(mask, idx, action.startsWith('en') ? 1 : 0);
+              writeMask(newMask);
+              // if syncUiFromMask exists, call to reflect change immediately
+              if (typeof syncUiFromMask === 'function') syncUiFromMask();
+              else {
+                // fallback: dispatch an event other code can listen to
+                try { window.dispatchEvent(new CustomEvent('bm_mask_changed_via_console', { detail: { idx, action, mask: newMask.toString() } })); } catch(e){}
+              }
+            } catch (e) {}
+          } catch (e) {
+            try { fn(...args); } catch (_) {}
+          }
+        }
+
+        console.log = function(...args){ parserAndForward(orig.log, args); };
+        console.info = function(...args){ parserAndForward(orig.info, args); };
+        console.warn = function(...args){ parserAndForward(orig.warn, args); };
+        console.error = function(...args){ parserAndForward(orig.error, args); };
+      } catch (e) {}
+    })();
+
+    // Expose a small API to override the cooldown (useful for testing)
+    try {
+      window.__bm_allowConsoleNow = function() { allowConsoleAt = Date.now(); };
+      window.__bm_setConsoleAllowDelay = function(ms) { allowConsoleAt = Date.now() + Number(ms || COOL_DOWN_MS); };
+    } catch (e) {}
+  } catch (err) {
+    console.warn('installConsoleSyncWithStartupGuard failed', err);
   }
 })();
