@@ -35,6 +35,7 @@
       ruler_offset_label: "Offsets (X, Y):",
       ruler_area_label: "Area (sq units):",
       ruler_clear: "Clear",
+      snapshot: "Take a snapshot",
       ruler_pick_toast: "Picked",
       ruler_wait_pick: "Click on the map to pick",
       ruler_no_coords: "No coords available to pick",
@@ -80,6 +81,7 @@
       ruler_offset_label: "横纵偏移 (X, Y):",
       ruler_area_label: "面积 (平方单位):",
       ruler_clear: "清除",
+      snapshot: "拍快照",
       ruler_pick_toast: "已拾取",
       ruler_wait_pick: "请在地图上点击以拾取",
       ruler_no_coords: "没有可用的坐标",
@@ -2970,6 +2972,7 @@ try {
 
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px;">
           <button id="wplace_ruler_clear" class="wplace_btn small">${t('ruler_clear')}</button>
+          <button id="wplace_ruler_snapshot" class="wplace_btn small">${t('snapshot')}</button>
         </div>
       </div>
     `;
@@ -3087,7 +3090,302 @@ try {
     panel.style.display = 'none';
     pickingMode = null;
   }
+  (function installRulerSnapshot() {
+  // config
+  const TILE_SIZE = 1000;               // 每个 tile 的像素宽高
+  const BACKEND_TILE_URL = 'https://backend.wplace.live/files/s0/tiles'; // 模板前缀
+  const FETCH_TIMEOUT_MS = 7000;        // 每个 tile fetch 超时
+  const MAX_CONCURRENT_FETCH = 6;       // 并发限制以防并发过高
 
+  function showRulerToast(msg, timeout = 2500) {
+    try { showToast && showToast(msg, timeout); } catch (e) { console.log(msg); }
+  }
+
+  // 计算全局像素坐标（X,Y）工具，复用你已有 computeXYFromFour 风格
+  function fourToGlobalXY(arr) {
+    if (!arr || arr.length !== 4) return null;
+    const [TlX, TlY, PxX, PxY] = arr.map(Number);
+    if ([TlX, TlY, PxX, PxY].some(n => Number.isNaN(n))) return null;
+    const X = TlX * TILE_SIZE + PxX;
+    const Y = TlY * TILE_SIZE + PxY;
+    return { X, Y };
+  }
+
+  // 给 fetch 加超时
+  function fetchWithTimeout(url, opts = {}, timeout = FETCH_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), timeout);
+      fetch(url, Object.assign({ mode: 'cors', credentials: 'same-origin' }, opts))
+        .then(r => {
+          clearTimeout(timer);
+          if (!r.ok) throw new Error('http ' + r.status);
+          return r.blob();
+        })
+        .then(b => resolve(b))
+        .catch(err => { clearTimeout(timer); reject(err); });
+    });
+  }
+
+  // 根据 start/end 四元坐标生成截图并触发下载
+  async function captureRulerSelectionAsPNG(startArr, endArr) {
+    if (!startArr || !endArr) { showRulerToast('需要先设置起点和终点 | Please set start and end points first'); return; }
+
+    const a = fourToGlobalXY(startArr);
+    const b = fourToGlobalXY(endArr);
+    if (!a || !b) { showRulerToast('坐标解析失败 | Coordinate parsing failed'); return; }
+
+    // 规范化为左上与右下（包含边界）
+    const leftX = Math.min(a.X, b.X);
+    const rightX = Math.max(a.X, b.X);
+    const topY = Math.min(a.Y, b.Y);
+    const bottomY = Math.max(a.Y, b.Y);
+
+    const outW = rightX - leftX + 1;
+    const outH = bottomY - topY + 1;
+    if (outW <= 0 || outH <= 0) { showRulerToast('选区大小为零 | Selection size is zero'); return; }
+
+    // tile 范围（基于 TILE_SIZE）
+    const tileLeft = Math.floor(leftX / TILE_SIZE);
+    const tileRight = Math.floor(rightX / TILE_SIZE);
+    const tileTop = Math.floor(topY / TILE_SIZE);
+    const tileBottom = Math.floor(bottomY / TILE_SIZE);
+
+    // 计算需要请求的所有 tile 列表
+    const tiles = [];
+    for (let ty = tileTop; ty <= tileBottom; ty++) {
+      for (let tx = tileLeft; tx <= tileRight; tx++) {
+        tiles.push({ tx, ty });
+      }
+    }
+
+    showRulerToast(`开始抓取 ${tiles.length} 张 tile，可能需要一些时间... | Fetching ${tiles.length} tiles, this may take a while...`, 4000);
+
+    // 限流并行 fetch
+    async function fetchAllTiles(list) {
+      const results = new Map(); // key 'tx,ty' -> ImageBitmap (or HTMLImageElement)
+      let idx = 0;
+
+      async function worker() {
+        while (true) {
+          let item;
+          // get next
+          if (idx >= list.length) return;
+          item = list[idx++];
+          const url = `${BACKEND_TILE_URL}/${item.tx}/${item.ty}.png`;
+          try {
+            const blob = await fetchWithTimeout(url, {}, FETCH_TIMEOUT_MS);
+            // create ImageBitmap if supported (更快)，否则用 img element
+            let imgBitmap = null;
+            if (typeof createImageBitmap === 'function') {
+              try { imgBitmap = await createImageBitmap(blob); }
+              catch (e) { imgBitmap = null; }
+            }
+            if (!imgBitmap) {
+              // fallback to HTMLImageElement
+              const objectURL = URL.createObjectURL(blob);
+              const img = await new Promise((res, rej) => {
+                const el = new Image();
+                el.crossOrigin = 'anonymous';
+                el.onload = () => { URL.revokeObjectURL(objectURL); res(el); };
+                el.onerror = (ev) => { URL.revokeObjectURL(objectURL); rej(new Error('img load error')); };
+                el.src = objectURL;
+              });
+              results.set(`${item.tx},${item.ty}`, img);
+            } else {
+              results.set(`${item.tx},${item.ty}`, imgBitmap);
+            }
+          } catch (err) {
+            // store null to indicate missing tile
+            results.set(`${item.tx},${item.ty}`, null);
+            console.warn('tile fetch failed', url, err);
+          }
+        }
+      }
+
+      // spawn workers
+      const workers = [];
+      const concurrency = Math.min(MAX_CONCURRENT_FETCH, Math.max(1, Math.floor(navigator.hardwareConcurrency || 4)));
+      for (let i = 0; i < concurrency; i++) workers.push(worker());
+      await Promise.all(workers);
+      return results;
+    }
+
+    let fetchedMap;
+    try {
+      fetchedMap = await fetchAllTiles(tiles);
+    } catch (e) {
+      showRulerToast('抓取 tiles 失败: ' + (e && e.message ? e.message : 'error') + ' | Fetching tiles failed: ' + (e && e.message ? e.message : 'error'), 4000);
+      return;
+    }
+
+    // 创建离屏 canvas（尺寸 outW x outH）
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { showRulerToast('无法获取 2D 上下文 | Unable to get 2D context'); return; }
+
+    // 对每个 tile，计算在输出 canvas 的目标位置以及从 tile 内部要裁切的子区域
+    for (let ty = tileTop; ty <= tileBottom; ty++) {
+      for (let tx = tileLeft; tx <= tileRight; tx++) {
+        const key = `${tx},${ty}`;
+        const tileImg = fetchedMap.get(key);
+        // tile 的全局像素范围
+        const tileX0 = tx * TILE_SIZE;
+        const tileY0 = ty * TILE_SIZE;
+        const tileX1 = tileX0 + TILE_SIZE - 1;
+        const tileY1 = tileY0 + TILE_SIZE - 1;
+
+        // 求交集（选区 vs tile）
+        const sx = Math.max(leftX, tileX0);
+        const ex = Math.min(rightX, tileX1);
+        const sy = Math.max(topY, tileY0);
+        const ey = Math.min(bottomY, tileY1);
+        if (ex < sx || ey < sy) continue;
+
+        const srcX = sx - tileX0; // 在 tile 内的左上 x
+        const srcY = sy - tileY0; // 在 tile 内的左上 y
+        const srcW = ex - sx + 1;
+        const srcH = ey - sy + 1;
+
+        const destX = sx - leftX; // 在输出 canvas 上的位置
+        const destY = sy - topY;
+
+        try {
+          if (!tileImg) {
+            // tile 丢失或获取失败 -> 用透明填充或占位（这里用半透明红提示缺图）
+            ctx.fillStyle = 'rgba(255,0,0,0.25)';
+            ctx.fillRect(destX, destY, srcW, srcH);
+            ctx.fillStyle = 'rgba(0,0,0,0.0)';
+            continue;
+          }
+
+          // tileImg 可能是 ImageBitmap 或 HTMLImageElement
+          // drawImage 支持 ImageBitmap 与 HTMLImageElement
+          ctx.drawImage(tileImg,
+                        Math.round(srcX), Math.round(srcY), Math.round(srcW), Math.round(srcH),
+                        Math.round(destX), Math.round(destY), Math.round(srcW), Math.round(srcH));
+        } catch (e) {
+          console.warn('drawImage fail', key, e);
+        }
+      }
+    }
+
+    // 导出 PNG 并触发下载
+    try {
+      const filename = `wplace_ruler_${leftX}_${topY}_${outW}x${outH}.png`;
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          showRulerToast('生成图片失败 | Failed to generate image');
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+        showRulerToast('截图已下载 | Screenshot downloaded', 2500);
+      }, 'image/png');
+    } catch (e) {
+      showRulerToast('导出 PNG 失败 | Export PNG failed');
+      console.error(e);
+    }
+  }
+
+  // 绑定到面板按钮（等待 panel 已创建）
+  function bindSnapshotButton() {
+    try {
+      const panelEl = document.getElementById('wplace_ruler_panel');
+      if (!panelEl) return;
+      const snapBtn = panelEl.querySelector('#wplace_ruler_snapshot');
+      if (!snapBtn) return;
+
+      if (snapBtn.__wplace_snapshot_bound) return;
+      snapBtn.__wplace_snapshot_bound = true;
+      snapBtn.addEventListener('click', async () => {
+        try {
+          // 读取当前输入框的四元坐标（优先 panel 中的 input 文本）
+          const sIn = panelEl.querySelector('#wplace_ruler_start');
+          const eIn = panelEl.querySelector('#wplace_ruler_end');
+          const sVal = sIn ? String(sIn.value || '').trim() : '';
+          const eVal = eIn ? String(eIn.value || '').trim() : '';
+          const sArr = parseFourCoords(sVal);
+          const eArr = parseFourCoords(eVal);
+          if (!sArr || !eArr) {
+            showRulerToast('请先设置有效的起点和终点坐标 | Please set valid start and end coordinates first');
+            return;
+          }
+          await captureRulerSelectionAsPNG(sArr, eArr);
+        } catch (err) {
+          console.error('snapshot error', err);
+          showRulerToast('截图失败 | Snapshot failed');
+        }
+      }, { passive: true });
+    } catch (e) {
+      console.warn('bindSnapshotButton failed', e);
+    }
+  }
+
+  // 插入按钮并绑定（如果 panel 尚未创建，等待并观察）
+  (function ensureButtonExistsAndBind() {
+    const panel = document.getElementById('wplace_ruler_panel');
+    if (panel) {
+      // 如果按钮不存在，尝试在结果区域后追加
+      try {
+        if (!panel.querySelector('#wplace_ruler_snapshot')) {
+          const footer = panel.querySelector('#wplace_ruler_body > div:last-of-type') || panel.querySelector('#wplace_ruler_body');
+          // create button and insert near clear
+          const btn = document.createElement('button');
+          btn.id = 'wplace_ruler_snapshot';
+          btn.className = 'wplace_btn small';
+          btn.textContent = '截图';
+          // try to place near clear button
+          const clearBtn = panel.querySelector('#wplace_ruler_clear');
+          if (clearBtn && clearBtn.parentElement) {
+            clearBtn.parentElement.insertBefore(btn, clearBtn.nextSibling);
+          } else if (footer) {
+            footer.appendChild(btn);
+          } else {
+            panel.appendChild(btn);
+          }
+        }
+      } catch (e) {}
+      // bind
+      bindSnapshotButton();
+      return;
+    }
+
+    // 如果 panel 还没创建，则用 MutationObserver 等待创建后插入并绑定
+    const mo = new MutationObserver((muts, obs) => {
+      for (const m of muts) {
+        if (m.addedNodes && m.addedNodes.length) {
+          const p = document.getElementById('wplace_ruler_panel');
+          if (p) {
+            try { obs.disconnect(); } catch (_) {}
+            try {
+              if (!p.querySelector('#wplace_ruler_snapshot')) {
+                const btn = document.createElement('button');
+                btn.id = 'wplace_ruler_snapshot';
+                btn.className = 'wplace_btn small';
+                btn.textContent = '截图';
+                const clearBtn = p.querySelector('#wplace_ruler_clear');
+                if (clearBtn && clearBtn.parentElement) clearBtn.parentElement.insertBefore(btn, clearBtn.nextSibling);
+                else p.appendChild(btn);
+              }
+            } catch (e) {}
+            bindSnapshotButton();
+            return;
+          }
+        }
+      }
+    });
+    try { mo.observe(document.body, { childList: true, subtree: true }); } catch (e) { /* ignore */ }
+  })();
+
+})();
   function updateRulerI18n() {
   try {
     const m = document.getElementById('wplace_ruler_panel');
@@ -3106,6 +3404,9 @@ try {
 
     const clearBtn = m.querySelector('#wplace_ruler_clear');
     if (clearBtn) clearBtn.textContent = t('ruler_clear');
+
+    const snapshotBtn = m.querySelector('#wplace_ruler_snapshot');
+    if (snapshotBtn) snapshotBtn.textContent = t('snapshot');
 
     // labels: pick all label elements and set by index if present
     const labels = Array.from(m.querySelectorAll('label'));
