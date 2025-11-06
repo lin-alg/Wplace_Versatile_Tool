@@ -5093,3 +5093,256 @@ try {
     (document.head || document.documentElement || document.body).appendChild(s);
   } catch (e) { console.warn('ensureInjectBmMask failed', e); }
 })();
+
+(function WplaceFastPaint() {
+  try {
+    if (window.__wplace_fast_paint_installed) return;
+    window.__wplace_fast_paint_installed = true;
+
+    const TARGET_SELECTOR = '.rounded-t-box.bg-base-100.border-base-300.w-full.border-t.py-3';
+    const STEP = 2; // 每两个像素点击一次
+    const BATCH_RESOLVE = 16384; // 预解析 elementFromPoint 每批大小
+    const YIELD_EVERY = 65536; // 每多少次点击做一次最小 yield
+    const POST_MSG = '__WPLACE_FAST_PAINT_YIELD__' + Math.random();
+
+    // minimal yield via postMessage (very cheap)
+    let yieldResolve = null;
+    window.addEventListener('message', (e) => {
+      if (e && e.data === POST_MSG && typeof yieldResolve === 'function') {
+        const r = yieldResolve; yieldResolve = null; r();
+      }
+    }, false);
+    const minimalYield = () => new Promise(res => { yieldResolve = res; window.postMessage(POST_MSG, '*'); });
+
+    // 状态
+    let waitingForClicks = false;
+    let startPt = null;
+    let endPt = null;
+    let abortFlag = false;
+    let overlay = null;
+
+    // 检查页面是否含目标元素
+    function pageHasTarget() {
+      try { return !!document.querySelector(TARGET_SELECTOR); } catch (e) { return false; }
+    }
+
+    // overlay 用于绘制矩形（若需要）但不用于消息，消息改为使用 showToast
+    function makeOverlay() {
+      if (overlay && document.body.contains(overlay)) return overlay;
+      const o = document.createElement('div');
+      o.id = '__wplace_fast_paint_overlay';
+      Object.assign(o.style, {
+        position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh',
+        zIndex: 2147483646, pointerEvents: 'none', fontFamily: 'sans-serif'
+      });
+      document.body.appendChild(o);
+      overlay = o;
+      return o;
+    }
+    function clearOverlay() {
+      try { if (overlay) overlay.innerHTML = ''; } catch (e) {}
+    }
+    function toast(msg, timeout = 2000) {
+      try {
+        if (typeof showToast === 'function') {
+          try { showToast(msg, timeout); return; } catch (e) {}
+        }
+        // fallback to console and simple inline toast if showToast missing
+        console.log('[fast-paint] ' + msg);
+        try {
+          const id = '__wplace_fast_paint_fallback_toast';
+          let el = document.getElementById(id);
+          if (!el) {
+            el = document.createElement('div');
+            el.id = id;
+            Object.assign(el.style, {
+              position: 'fixed', right: '12px', bottom: '12px', zIndex: 2147483647,
+              background: 'rgba(0,0,0,0.72)', color: '#e8faff', padding: '8px 10px',
+              borderRadius: '6px', fontSize: '13px', pointerEvents: 'none', transition: 'opacity 0.15s linear'
+            });
+            document.documentElement.appendChild(el);
+          }
+          el.textContent = msg;
+          el.style.opacity = '1';
+          setTimeout(() => { try { el.style.opacity = '0'; } catch(_) {} }, timeout);
+        } catch (e) {}
+      } catch (e) {}
+    }
+
+    function drawRect(left, top, w, h) {
+      try {
+        const o = makeOverlay();
+        o.innerHTML = '';
+        const rect = document.createElement('div');
+        Object.assign(rect.style, {
+          position: 'absolute', left: left + 'px', top: top + 'px',
+          width: Math.max(0, w) + 'px', height: Math.max(0, h) + 'px',
+          border: '2px dashed rgba(0,200,255,0.9)', background: 'rgba(0,200,255,0.06)',
+          boxSizing: 'border-box', pointerEvents: 'none', zIndex: 2147483647
+        });
+        o.appendChild(rect);
+      } catch (e) {}
+    }
+
+    // Synth real-like click: pointerdown -> pointerup -> click + mouse events as fallback
+    function dispatchClickAt(x, y) {
+      try {
+        const target = document.elementFromPoint(x, y) || document.body;
+        const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, screenX: window.screenX + x, screenY: window.screenY + y, button: 0, buttons: 1 };
+        try { target.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ pointerId: 1, isPrimary: true, pointerType: 'mouse' }, opts))); } catch (e) {}
+        try { target.dispatchEvent(new MouseEvent('mousedown', opts)); } catch (e) {}
+        try { target.dispatchEvent(new PointerEvent('pointerup', Object.assign({ pointerId: 1, isPrimary: true, pointerType: 'mouse' }, opts))); } catch (e) {}
+        try { target.dispatchEvent(new MouseEvent('mouseup', opts)); } catch (e) {}
+        try { target.dispatchEvent(new MouseEvent('click', opts)); } catch (e) {}
+      } catch (e) {}
+    }
+
+    // 预计算 targets 并执行点击（行主序）
+    async function runFastClicks(tl, br, step = STEP) {
+      abortFlag = false;
+      // 规范化边界（整数）
+      const left = Math.max(0, Math.min(tl.x, br.x)) | 0;
+      const right = Math.max(0, Math.max(tl.x, br.x)) | 0;
+      const top = Math.max(0, Math.min(tl.y, br.y)) | 0;
+      const bottom = Math.max(0, Math.max(tl.y, br.y)) | 0;
+
+      // 预构造所有点（仅坐标）
+      const coords = [];
+      for (let y = top; y <= bottom; y += step) {
+        for (let x = left; x <= right; x += step) {
+          coords.push({ x: x | 0, y: y | 0 });
+        }
+      }
+
+      // 预解析 elementFromPoint 分批（避免一次阻塞过久）
+      for (let s = 0; s < coords.length; s += BATCH_RESOLVE) {
+        const e = Math.min(s + BATCH_RESOLVE, coords.length);
+        for (let k = s; k < e; k++) {
+          const c = coords[k];
+          c.el = document.elementFromPoint(c.x, c.y) || document.body;
+        }
+        if (e < coords.length) await minimalYield();
+      }
+
+      // 现已将元素解析到 coords[].el，开始快速 dispatch
+      const total = coords.length;
+      let idx = 0;
+      toast(`Fast paint started: 0% (0/${total})`, 3000);
+      while (idx < total) {
+        if (abortFlag) {
+          toast('Fast paint cancelled', 2000);
+          clearOverlay();
+          return { cancelled: true };
+        }
+        // 每次处理一小批以保持浏览器响应
+        const batch = Math.min(8192, total - idx);
+        for (let i = 0; i < batch; i++) {
+          const c = coords[idx + i];
+          const targetEl = (c.el && document.body.contains(c.el)) ? c.el : (document.elementFromPoint(c.x, c.y) || document.body);
+          try {
+            const opts = { bubbles: true, cancelable: true, composed: true, clientX: c.x, clientY: c.y, screenX: window.screenX + c.x, screenY: window.screenY + c.y, button: 0, buttons: 1 };
+            try { targetEl.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ pointerId: 1, isPrimary: true, pointerType: 'mouse' }, opts))); } catch (e) {}
+            try { targetEl.dispatchEvent(new MouseEvent('mousedown', opts)); } catch (e) {}
+            try { targetEl.dispatchEvent(new PointerEvent('pointerup', Object.assign({ pointerId: 1, isPrimary: true, pointerType: 'mouse' }, opts))); } catch (e) {}
+            try { targetEl.dispatchEvent(new MouseEvent('mouseup', opts)); } catch (e) {}
+            try { targetEl.dispatchEvent(new MouseEvent('click', opts)); } catch (e) {}
+          } catch (e) {}
+        }
+        idx += batch;
+        const pct = Math.round((idx / total) * 100);
+        toast(`Fast paint: ${pct}% (${idx}/${total})`, 1500);
+        if (idx % YIELD_EVERY === 0) await minimalYield();
+        await minimalYield();
+      }
+
+      toast('Fast paint finished', 2000);
+      setTimeout(() => { try { clearOverlay(); } catch (e) {} }, 800);
+      return { cancelled: false };
+    }
+
+    // capture two clicks (left-top, right-bottom)
+    function onCaptureClick(ev) {
+      try {
+        // ignore clicks inside our UI panel
+        const path = ev.composedPath ? ev.composedPath() : (ev.path || []);
+        for (const n of path) {
+          try { if (n && n.id === 'wplace_versatile_tool') return; } catch (e) {}
+        }
+      } catch (e) {}
+      ev.preventDefault(); ev.stopPropagation();
+
+      const pt = { x: ev.clientX, y: ev.clientY };
+      if (!startPt) {
+        startPt = pt;
+        drawRect(startPt.x, startPt.y, 1, 1);
+        toast('Fast paint: start saved, click bottom-right', 1500);
+        return;
+      }
+      if (!endPt) {
+        endPt = pt;
+        const left = Math.min(startPt.x, endPt.x);
+        const top = Math.min(startPt.y, endPt.y);
+        const w = Math.abs(endPt.x - startPt.x);
+        const h = Math.abs(endPt.y - startPt.y);
+        drawRect(left, top, w, h);
+        try { document.removeEventListener('pointerdown', onCaptureClick, true); } catch (e) {}
+        waitingForClicks = false;
+        runFastClicks(startPt, endPt, STEP).catch(err => { console.error('fast paint error', err); toast('Fast paint error', 2000); setTimeout(clearOverlay, 800); });
+      }
+    }
+
+    function cancelCapture() {
+      abortFlag = true;
+      waitingForClicks = false;
+      startPt = null;
+      endPt = null;
+      try { document.removeEventListener('pointerdown', onCaptureClick, true); } catch (e) {}
+      toast('Fast paint cancelled', 1500);
+      setTimeout(clearOverlay, 600);
+    }
+
+    // key handler: only activate when page has target element
+    function onKeyDown(e) {
+      try {
+        if (e.repeat) return;
+        // ignore typing
+        const active = document.activeElement;
+        const tag = (active && active.tagName || '').toLowerCase();
+        if (active && (active.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select')) return;
+
+        if ((e.key === 'z' || e.key === 'Z') && pageHasTarget()) {
+          if (waitingForClicks) return;
+          waitingForClicks = true;
+          startPt = null; endPt = null; abortFlag = false;
+          toast('Fast paint: click top-left then bottom-right (Esc to cancel)', 2000);
+          try { document.addEventListener('pointerdown', onCaptureClick, true); } catch (err) {}
+          makeOverlay();
+        } else if (e.key === 'Escape') {
+          if (waitingForClicks || startPt || endPt) cancelCapture();
+        }
+      } catch (err) {}
+    }
+
+    window.addEventListener('keydown', onKeyDown, true);
+
+    // expose simple API
+    window.__wplace_fast_paint_control = {
+      isInstalled: true,
+      status: () => ({ waitingForClicks, startPt, endPt, abortFlag, hasTarget: pageHasTarget() }),
+      cancel: cancelCapture,
+      uninstall: function() {
+        try {
+          window.removeEventListener('keydown', onKeyDown, true);
+          document.removeEventListener('pointerdown', onCaptureClick, true);
+        } catch (e) {}
+        try { clearOverlay(); } catch (e) {}
+        delete window.__wplace_fast_paint_installed;
+        delete window.__wplace_fast_paint_control;
+      }
+    };
+
+    console.log('Wplace fast paint installed (showToast). Press Z (when target exists), click top-left then bottom-right. Esc to cancel.');
+  } catch (e) {
+    console.warn('installWplaceFastPaintUsingShowToast failed', e);
+  }
+})();
