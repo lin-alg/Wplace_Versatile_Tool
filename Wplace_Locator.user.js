@@ -906,25 +906,61 @@
   // 抽取并格式化
   function extractAndFormatUrl(text) {
     if (!text) return null;
-    const m = text.match(/(https?:\/\/)?(www\.)?wplace\.live[^\s]*/i);
+
+    // 尝试直接匹配常见的 wplace.live URL 片段（包含可能的参数）
+    const reUrl = /(https?:\/\/)?(www\.)?wplace\.live[^\s'"]*/i;
+    const m = String(text).match(reUrl);
     if (!m) return null;
-    const raw = m[0].replace(/^https?:\/\//i, '').replace(/^www\./i, '');
-    let tmp;
-    try {
-      tmp = new URL((/^https?:\/\//i.test(m[0]) ? '' : 'https://') + m[0].replace(/^(https?:\/\/)?/i, ''));
-    } catch (e) {
-      try {
-        tmp = new URL('https://' + raw);
-      } catch (e2) {
-        return null;
-      }
+
+    // 得到匹配的原始片段（可能包含 query）
+    const matched = m[0];
+
+    // 小工具：将数字四舍五入到 3 位并去掉多余 0
+    function round3(v) {
+      const n = Number(v);
+      if (!isFinite(n)) return null;
+      // 保留最少位数（去掉尾部 0）
+      const s = (Math.round(n * 1000) / 1000).toFixed(3);
+      return s.replace(/(?:\.0+$|(\.\d+?)0+$)/, '$1');
     }
-    const params = tmp.searchParams;
-    if (!params.has('lat') || !params.has('lng')) return null;
-    const lat = parseFloat(params.get('lat'));
-    const lng = parseFloat(params.get('lng'));
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-    return `wplace.live/?lat=${lat.toFixed(3)}&lng=${lng.toFixed(3)}`;
+
+    // 先尝试用 URL 解析（稳健）
+    try {
+      // 如果匹配片段没有协议，加上临时协议以便 new URL 可解析
+      const tmp = matched.replace(/^(https?:\/\/)?(www\.)?/i, (p) => p || '');
+      const url = new URL((/^https?:\/\//i.test(matched) ? '' : 'https://') + matched.replace(/^(https?:\/\/)?/, ''));
+      const params = url.searchParams;
+      if (!params.has('lat') || !params.has('lng')) return null;
+      const lat = parseFloat(params.get('lat'));
+      const lng = parseFloat(params.get('lng'));
+      if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+      const latS = round3(lat);
+      const lngS = round3(lng);
+      const zoom = params.has('zoom') ? params.get('zoom') : null;
+      return `wplace.live/?lat=${latS}&lng=${lngS}${zoom ? `&zoom=${zoom}` : ''}`;
+    } catch (e) {
+      // 解析失败时做更宽松的手工解析：提取 ? 后面的 query 或 pathname 中的参数
+      try {
+        const raw = matched.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+        const qIdx = raw.indexOf('?');
+        if (qIdx >= 0) {
+          const qs = raw.slice(qIdx + 1);
+          const sp = new URLSearchParams(qs);
+          if (sp.has('lat') && sp.has('lng')) {
+            const lat = parseFloat(sp.get('lat'));
+            const lng = parseFloat(sp.get('lng'));
+            if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+              const latS = round3(lat);
+              const lngS = round3(lng);
+              const zoom = sp.has('zoom') ? sp.get('zoom') : null;
+              return `wplace.live/?lat=${latS}&lng=${lngS}${zoom ? `&zoom=${round3(zoom)}` : ''}`;
+            }
+          }
+        }
+      } catch (e2) {}
+    }
+
+    return null;
   }
 
   // 判断是否目标
@@ -1051,4 +1087,212 @@
     mo.disconnect();
     clearInterval(poll);
   });
+})();
+
+(function replaceCopyButtonHandler() {
+  try {
+    // 查找目标按钮：class 包含 btn-primary 且文本包含 Copy（大小写兼容）
+    function findCopyButton() {
+      // 优先查找精确结构的按钮
+      let btn = Array.from(document.querySelectorAll('button.btn-primary, .btn-primary button'))
+        .find(b => (b.textContent || '').trim().toLowerCase() === 'copy');
+      if (btn) return btn;
+      // 备选：任何 btn-primary 的按钮，文本包含 copy
+      btn = Array.from(document.querySelectorAll('button.btn-primary, .btn-primary button'))
+        .find(b => /copy/i.test(b.textContent || ''));
+      return btn || null;
+    }
+
+    // 将数字四舍五入到 3 位并去掉冗余 0
+    function round3(v) {
+      const n = Number(v);
+      if (!isFinite(n)) return null;
+      const s = (Math.round(n * 1000) / 1000).toFixed(3);
+      return s.replace(/(?:\.0+$|(\.\d+?)0+$)/, '$1');
+    }
+
+    // 从一段文本中找 wplace.live 的 url（宽松匹配）
+    function extractWplaceUrl(text) {
+      if (!text) return null;
+      const m = String(text).match(/(https?:\/\/)?(www\.)?wplace\.live[^\s'"]*/i);
+      if (!m) return null;
+      return m[0];
+    }
+
+    // 尝试从周围 DOM 或全页寻找可用的 wplace 链接或格式化字符串
+    function findCandidateString(button) {
+      // 1) 优先查找与按钮相邻的（父节点或祖先内）包含 wplace.live 的元素
+      let el = button;
+      for (let depth = 0; depth < 4 && el; depth++, el = el.parentElement) {
+        const txt = el.innerText || el.textContent || '';
+        const u = extractWplaceUrl(txt);
+        if (u) return u;
+      }
+      // 2) 在同一父容器中查找 readonly 元素或文本节点
+      const parent = button.parentElement || document.body;
+      const candidates = parent.querySelectorAll('input[readonly], [readonly], .text, p, span, div');
+      for (const c of candidates) {
+        const txt = (c.value || c.getAttribute && c.getAttribute('value') || c.innerText || c.textContent || '').toString();
+        const u = extractWplaceUrl(txt);
+        if (u) return u;
+      }
+      // 3) 全页查找最后匹配的 formatted wplace.live/?lat=...&lng=...
+      const allText = Array.from(document.querySelectorAll('input[readonly], [readonly], p, span, div'))
+        .map(n => (n.value || n.getAttribute && n.getAttribute('value') || n.innerText || n.textContent || '').toString());
+      for (const t of allText) {
+        const u = extractWplaceUrl(t);
+        if (u) return u;
+      }
+      // 4) 最后尝试 window.__wplace_try_autofill_external 或 window.__wplace_latest_coords 这类全局变量
+      if (window.__wplace_latest_coords) {
+        // __wplace_latest_coords 存的是四个数的形式 TlX,TlY,PxX,PxY
+        const four = String(window.__wplace_latest_coords).split(',').map(s => s.trim());
+        if (four.length === 4 && four.every(x => !Number.isNaN(Number(x)))) {
+          // 若有全局计算函数可用，优先使用它
+          if (window.__wplace_netwatch && typeof window.__wplace_netwatch.computeLatLngFromFour === 'function') {
+            const [TlX, TlY, PxX, PxY] = four.map(Number);
+            const { lat, lng } = window.__wplace_netwatch.computeLatLngFromFour(TlX, TlY, PxX, PxY);
+            return `wplace.live/?lat=${lat}&lng=${lng}`;
+          }
+        }
+      }
+      return null;
+    }
+
+    // 格式化最终要复制的字符串：去掉 https:// 并把 lat/lng 保留 3 位
+    function normalizeAndRoundUrl(raw) {
+      if (!raw) return null;
+      // 保证有域名开头
+      const hasProtocol = /^https?:\/\//i.test(raw);
+      const urlStr = hasProtocol ? raw : 'https://' + raw;
+      try {
+        const u = new URL(urlStr);
+        // if has lat & lng params -> round them
+        const params = u.searchParams;
+        if (params.has('lat') && params.has('lng')) {
+          const lat = round3(params.get('lat'));
+          const lng = round3(params.get('lng'));
+          const zoom = params.has('zoom') ? params.get('zoom') : null;
+          const base = `wplace.live/?lat=${lat}&lng=${lng}` + (zoom ? `&zoom=${zoom}` : '');
+          return base;
+        }
+        // fallback: if pathname contains lat/lng pattern (less likely) just return host+pathname+search without protocol
+        const withoutProto = (u.host + u.pathname + u.search + u.hash).replace(/^\/+/, '');
+        return withoutProto;
+      } catch (e) {
+        // 非标准 URL，仅去协议并返回
+        let s = raw.replace(/^https?:\/\//i, '');
+        // 尝试把 lat/lng 找出来并 round
+        const m = s.match(/lat=([^&\s]+).*?lng=([^&\s]+)/i);
+        if (m) {
+          const lat = round3(m[1]);
+          const lng = round3(m[2]);
+          const zoomM = s.match(/[?&]zoom=([^&\s]+)/i);
+          const zoom = zoomM ? zoomM[1] : null;
+          return `wplace.live/?lat=${lat}&lng=${lng}` + (zoom ? `&zoom=${zoom}` : '');
+        }
+        return s.replace(/^\/\//, '');
+      }
+    }
+
+    // 复制并显示提示
+    async function copyToClipboardAndToast(text, btn) {
+      try {
+        // 使用 page 的复制函数（如果存在），否则 navigator.clipboard
+        let ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+          }
+        } catch (e) { ok = false; }
+        if (!ok) {
+          // fallback
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+          ta.remove();
+        }
+        // UI 提示（尽量不依赖你已有脚本的 showToast）
+        const old = document.getElementById('__wplace_copy_toast');
+        if (old) old.remove();
+        const toast = document.createElement('div');
+        toast.id = '__wplace_copy_toast';
+        toast.textContent = ok ? `Copied: ${text}` : `Copy failed`;
+        Object.assign(toast.style, {
+          position: 'fixed', left: '50%', transform: 'translateX(-50%)',
+          bottom: '22px', padding: '8px 12px', background: 'rgba(0,0,0,0.75)',
+          color: '#fff', borderRadius: '8px', zIndex: 2147483647, fontSize: '13px'
+        });
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 800);
+        return ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // 主逻辑：卸载旧监听器并安装新监听器
+    function installReplacement() {
+      const btn = findCopyButton();
+      if (!btn) return false;
+
+      // 使用 cloneNode 去掉所有事件监听器（浏览器上已注册的 DOM 事件会丢失）
+      const replacement = btn.cloneNode(true);
+      // 保持 ID / class / aria 等属性（clone 保留这些），如果原来被禁用则启用
+      replacement.disabled = false;
+
+      // 将原按钮替换为 clone（这样移除原有监听器）
+      btn.parentNode && btn.parentNode.replaceChild(replacement, btn);
+
+      // 安装我们自己的 click 处理器
+      replacement.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const raw = findCandidateString(replacement);
+        if (!raw) {
+          // 没找到 wplace 链接，尝试从 window.__wplace_latest_coords 构建
+          if (window.__wplace_latest_coords && window.__wplace_netwatch && typeof window.__wplace_netwatch.computeLatLngFromFour === 'function') {
+            const four = String(window.__wplace_latest_coords).split(',').map(s => s.trim()).map(Number);
+            if (four.length === 4 && four.every(n => Number.isFinite(n))) {
+              const { lat, lng } = window.__wplace_netwatch.computeLatLngFromFour(four[0], four[1], four[2], four[3]);
+              const raw2 = `wplace.live/?lat=${lat}&lng=${lng}`;
+              const normalized = normalizeAndRoundUrl(raw2);
+              await copyToClipboardAndToast(normalized, replacement);
+              return;
+            }
+          }
+          await copyToClipboardAndToast('No wplace link found', replacement);
+          return;
+        }
+        const normalized = normalizeAndRoundUrl(raw);
+        if (!normalized) {
+          await copyToClipboardAndToast('No wplace link found', replacement);
+          return;
+        }
+        await copyToClipboardAndToast(normalized, replacement);
+      }, { passive: false });
+
+      return true;
+    }
+
+    // 尝试安装：若页面动态生成按钮，多次尝试
+    let attempts = 0;
+    const maxAttempts = 8;
+    function tryInstallLater() {
+      attempts++;
+      const ok = installReplacement();
+      if (ok) return;
+      if (attempts < maxAttempts) {
+        setTimeout(tryInstallLater, 400 + attempts * 150);
+      }
+    }
+    tryInstallLater();
+  } catch (e) {
+    console.error('replaceCopyButtonHandler failed', e);
+  }
 })();
