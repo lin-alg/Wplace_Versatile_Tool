@@ -45,7 +45,7 @@
       invalid_input: '坐标无效',
       nav_blocked: '导航被阻止',
       captured: '已捕获',
-      minimized: '已最小化',
+      minimized: '最小化',
       restored: '已恢复',
       powered_by: 'Powered by lin-alg',
       autofilled: '已填写外部输入框'
@@ -188,6 +188,11 @@
       // reset drag flag
       ball._wasDragged = false;
 
+      // detect mobile devices (UA + pointer capability fallback)
+      const isMobile = (typeof navigator !== 'undefined' &&
+        (/Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent)))
+        || (navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+
       ball.addEventListener('pointerdown', (ev) => {
         if (ev.pointerType === 'mouse' && ev.button !== 0) return;
         ev.preventDefault();
@@ -208,12 +213,27 @@
         if (!dragging || ev.pointerId !== pid) return;
         ev.preventDefault();
         const dx = ev.clientX - sx, dy = ev.clientY - sy;
-        // consider small threshold to avoid tiny accidental moves
-        if (!ball._wasDragged && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) ball._wasDragged = true;
-        const margin = 8;
+
+        // on desktop: keep small-threshold and margin clamping (original behavior)
+        if (!isMobile) {
+          if (!ball._wasDragged && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) ball._wasDragged = true;
+          const margin = 8;
+          let L = Math.round(sl + dx), T = Math.round(st + dy);
+          L = Math.max(margin, Math.min(window.innerWidth - ball.offsetWidth - margin, L));
+          T = Math.max(margin, Math.min(window.innerHeight - ball.offsetHeight - margin, T));
+          ball.style.left = L + 'px';
+          ball.style.top = T + 'px';
+          return;
+        }
+
+        // on mobile: remove the "elastic" behavior — move directly with pointer (no small-threshold, no extra margin),
+        // but still keep element inside viewport (strict clamp to edges)
+        if (!ball._wasDragged) ball._wasDragged = true;
         let L = Math.round(sl + dx), T = Math.round(st + dy);
-        L = Math.max(margin, Math.min(window.innerWidth - ball.offsetWidth - margin, L));
-        T = Math.max(margin, Math.min(window.innerHeight - ball.offsetHeight - margin, T));
+        const maxL = Math.max(0, window.innerWidth - ball.offsetWidth);
+        const maxT = Math.max(0, window.innerHeight - ball.offsetHeight);
+        L = Math.max(0, Math.min(maxL, L));
+        T = Math.max(0, Math.min(maxT, T));
         ball.style.left = L + 'px';
         ball.style.top = T + 'px';
       }
@@ -228,10 +248,10 @@
         document.body.style.userSelect = '';
         try {
           const r = ball.getBoundingClientRect();
+          // on mobile we saved the strict clamped position; on desktop it's the original clamped one
           saveBallPos(Math.round(r.left), Math.round(r.top));
         } catch (e) {}
         // keep ball._wasDragged value for click handler to check
-        // clear the pointer capture id
         pid = null;
       }
     })();
@@ -846,4 +866,189 @@
     tryFillExternalInputsFromStoredCoords
   };
 
+})();
+
+(function () {
+  'use strict';
+
+  const SELECTOR_ATTR = '[readonly]';
+  const SELECTOR_CLASS_MATCH = 'text-base-content/80';
+  const POLL_MS = 500;
+  const DEBOUNCE_MS = 250;
+
+  // 用于防抖的简单计时器集合
+  const debounceMap = new WeakMap();
+
+  // 从元素或相关节点获取显示文本
+  function findRenderedText(el) {
+    if (!el) return '';
+    const cand = (el.value || el.getAttribute('value') || el.innerText || el.textContent || '').trim();
+    if (cand) return cand;
+    const parent = el.parentNode;
+    if (parent) {
+      for (const node of Array.from(parent.childNodes)) {
+        if (!node) continue;
+        const txt = (node.textContent || '').trim();
+        if (txt && /wplace\.live/i.test(txt)) return txt;
+      }
+    }
+    // 往上再找一层
+    if (parent && parent.parentNode) {
+      for (const node of Array.from(parent.parentNode.childNodes)) {
+        if (!node) continue;
+        const txt = (node.textContent || '').trim();
+        if (txt && /wplace\.live/i.test(txt)) return txt;
+      }
+    }
+    return '';
+  }
+
+  // 抽取并格式化
+  function extractAndFormatUrl(text) {
+    if (!text) return null;
+    const m = text.match(/(https?:\/\/)?(www\.)?wplace\.live[^\s]*/i);
+    if (!m) return null;
+    const raw = m[0].replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    let tmp;
+    try {
+      tmp = new URL((/^https?:\/\//i.test(m[0]) ? '' : 'https://') + m[0].replace(/^(https?:\/\/)?/i, ''));
+    } catch (e) {
+      try {
+        tmp = new URL('https://' + raw);
+      } catch (e2) {
+        return null;
+      }
+    }
+    const params = tmp.searchParams;
+    if (!params.has('lat') || !params.has('lng')) return null;
+    const lat = parseFloat(params.get('lat'));
+    const lng = parseFloat(params.get('lng'));
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+    return `wplace.live/?lat=${lat.toFixed(3)}&lng=${lng.toFixed(3)}`;
+  }
+
+  // 判断是否目标
+  function isTargetInput(el) {
+    if (!el || el.getAttribute == null) return false;
+    if (el.getAttribute('readonly') == null) return false;
+    const cls = el.getAttribute('class') || '';
+    return cls.indexOf(SELECTOR_CLASS_MATCH) !== -1;
+  }
+
+  // 写回显示（仅当与期望不同时写）
+  function applyFormattedIfNeeded(el, formatted) {
+    if (!el || !formatted) return;
+    const current = (el.value || el.getAttribute('value') || el.innerText || el.textContent || '').trim();
+    if (current === formatted) return;
+    // 防抖：同一元素短时间内只处理一次
+    const lastTimer = debounceMap.get(el);
+    if (lastTimer) {
+      clearTimeout(lastTimer);
+    }
+    const t = setTimeout(() => {
+      try {
+        if ('value' in el) {
+          el.value = formatted;
+        } else if ('innerText' in el) {
+          el.innerText = formatted;
+        } else {
+          el.textContent = formatted;
+        }
+        el.setAttribute('title', `formatted → ${formatted}`);
+      } catch (e) {
+        try { el.innerText = formatted; } catch (ee) { el.textContent = formatted; }
+      }
+      debounceMap.delete(el);
+    }, DEBOUNCE_MS);
+    debounceMap.set(el, t);
+  }
+
+  // 处理单个元素（不再标记为已处理，而是每次检测并同步）
+  function processElement(el) {
+    if (!el) return;
+    const text = findRenderedText(el);
+    const formatted = extractAndFormatUrl(text);
+    if (formatted) applyFormattedIfNeeded(el, formatted);
+  }
+
+  // 全页扫描并处理
+  function scanAndProcess() {
+    try {
+      const candidates = Array.from(document.querySelectorAll(SELECTOR_ATTR)).filter(isTargetInput);
+      for (const el of candidates) processElement(el);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  // 绑定事件到元素，捕捉 value/输入变化
+  function bindEventsTo(el) {
+    if (!el) return;
+    if (el.__wplace_bound) return;
+    const handler = () => processElement(el);
+    el.addEventListener('input', handler, { passive: true });
+    el.addEventListener('change', handler, { passive: true });
+    el.addEventListener('blur', handler, { passive: true });
+    // 属性变化也会触发 MutationObserver（见下），这里只是做保险
+    el.__wplace_bound = true;
+  }
+
+  // 绑定到现有和未来的目标元素
+  function bindExistingAndFuture() {
+    const list = Array.from(document.querySelectorAll(SELECTOR_ATTR)).filter(isTargetInput);
+    for (const el of list) bindEventsTo(el);
+  }
+
+  // MutationObserver：监听属性/子树/字符数据变化
+  const mo = new MutationObserver((mutations) => {
+    let needsScan = false;
+    for (const m of mutations) {
+      // 如果有新增或替换节点，或属性变化，触发扫描与绑定
+      if (m.type === 'childList' && (m.addedNodes && m.addedNodes.length > 0)) {
+        needsScan = true;
+        break;
+      }
+      if (m.type === 'attributes') {
+        // 只对可能影响匹配或内容的属性继续
+        const attr = m.attributeName;
+        if (['class', 'value', 'textContent', 'innerText', 'readonly'].includes(attr)) {
+          needsScan = true;
+          break;
+        }
+      }
+      if (m.type === 'characterData') {
+        needsScan = true;
+        break;
+      }
+    }
+    if (needsScan) {
+      bindExistingAndFuture();
+      scanAndProcess();
+    }
+  });
+
+  // 开始观察
+  mo.observe(document.documentElement || document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'value', 'readonly', 'textContent', 'innerText'],
+    characterData: true
+  });
+
+  // 周期性轮询作为补偿
+  const poll = setInterval(() => {
+    bindExistingAndFuture();
+    scanAndProcess();
+  }, POLL_MS);
+
+  // 初次运行
+  bindExistingAndFuture();
+  scanAndProcess();
+
+  // 清理钩子（页面卸载）
+  window.addEventListener('beforeunload', () => {
+    mo.disconnect();
+    clearInterval(poll);
+  });
 })();
