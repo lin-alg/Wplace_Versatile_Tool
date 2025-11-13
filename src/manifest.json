@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wplace_Versatile_Tool",
-  "version": "3.2",
+  "version": "4.1",
   "description": "A versatile Wplace tool",
   "permissions": [
     "scripting",
@@ -9,7 +9,8 @@
     "storage",
     "clipboardWrite",
     "notifications",
-    "webRequest"
+    "webRequest",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://backend.wplace.live/*",
@@ -40,7 +41,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["wplace_theme_inject.js", "wplace_bm_mask.js", "injected_style_patch.js", "icons/*", "content_ui.css"],
+      "resources": ["wplace_theme_inject.js", "wplace_ruler_inject.js", "wplace_bm_mask.js", "injected_style_patch.js", "icons/*", "content_ui.css", "replacements/4.NP8fl6fK.js"],
       "matches": ["https://wplace.live/*"]
     }
   ]
